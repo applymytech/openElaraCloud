@@ -1,16 +1,16 @@
-# OpenElara Cloud ☁️
+# OpenElara Cloud — Sovereign AI Demo
 
 <p align="center">
   <img src="public/cover.jpg" alt="OpenElara Cloud" width="600">
 </p>
 
-> **Sovereign Cloud AI Assistant** - Deploy your own AI-powered assistant on YOUR infrastructure.
+**OpenElara Cloud** is a **7-day demonstration** of what a sovereign, self-hosted AI assistant could look like. Built by a hobbyist developer, it's a proof-of-concept for BYOK + BYOC (Bring Your Own Key + Bring Your Own Cloud).
 
-**OpenElara Cloud** is a **demonstration and educational project** showing what a sovereign, self-hosted AI assistant could look like. Built by a hobbyist developer, it's a proof-of-concept for BYOK + BYOC (Bring Your Own Key + Bring Your Own Cloud) AI applications.
+> **🎓 What This Is:** A public demo to showcase the code you can deploy yourself. Try it for 7 days, then deploy YOUR OWN instance with YOUR keys in YOUR infrastructure.
 
-> 🎓 **What This Is:** An educational tool, a proof of concept, a hobbyist project. Not a commercial product.
+> **⚠️ Adults Only (18+)** — This application provides access to AI capabilities that may generate mature content.
 
-> ⚠️ **Adults Only (18+)** — This application provides access to AI capabilities that may generate mature content.
+**Live Demo:** [https://openelaracloud.web.app](https://openelaracloud.web.app) *(7-day trial)*
 
 ---
 
@@ -36,36 +36,171 @@ Five unique AI personas with distinct conversation styles:
 - **Aelira** — Philosophical deep thinker
 - **Architect** — System design specialist
 
-### 🎨 Agentic Image Generation
-Not just prompts — **Elara decides** the scene:
-- Provide a suggestion ("something cozy")
-- Elara interprets based on mood and context
-- Get character-authentic selfies
-- FLUX models via Together.ai
+### 🎨 AI Media Generation
+- Image generation (FLUX models via Together.ai)
+- Video generation (Stable Diffusion Video)
+- Two-layer provenance signing:
+  - **Visible layer**: PNG metadata (ExifTool readable)
+  - **Hidden layer**: Cryptographic steganography
 
-### 📜 Content Provenance
-Every generated image includes cryptographic proof:
-- Content hash
-- Timestamp
-- Model used
-- Your installation ID
-- Downloadable metadata sidecar
+### 🔍 Web Search
+- Powered by Exa.ai
+- Contextual search for AI responses
 
-### 🧠 Personal Knowledge Base (RAG)
-- Conversations automatically indexed
-- Upload your own documents
-- Elara remembers and references your knowledge
+### 📚 Knowledge Base (RAG)
+- Upload documents for AI context
+- Vector search across your content
+- Privacy-first: your data stays in your Firebase project
 
-### 🎬 Video Generation
-- Text-to-video with Wan 2.1 Turbo
-- Character-based scenes
-- Download with provenance
+### 📱 PWA (Progressive Web App)
+- Install to desktop or mobile
+- Works offline for UI
+- Native app experience
 
-### 🔒 True Sovereignty
-- **BYOK**: Your API keys in YOUR browser
-- **BYOC**: Your Firebase project, your data
-- **No middleman**: Direct API calls to providers
-- **Open source**: Verify everything
+---
+
+## 🚀 Quick Start (7-Day Trial)
+
+1. Visit [https://openelaracloud.web.app](https://openelaracloud.web.app)
+2. Sign in with **Google**
+3. Get your API keys:
+   - [Together.ai](https://api.together.xyz/settings/api-keys) - Image/video gen + premium chat (free trial available)
+   - [OpenRouter](https://openrouter.ai/keys) - 50+ free chat models
+   - [Exa.ai](https://dashboard.exa.ai/api-keys) - Web search (1000 free searches/month)
+4. Paste keys in **Account → API Keys**
+5. Start chatting!
+
+**After 7 days:** Deploy your own instance (see below) or lose access.
+
+---
+
+## 🔑 Bring Your Own Key (BYOK)
+
+OpenElara Cloud is **completely free to deploy**. You connect directly to AI providers using your own API keys:
+
+| Provider | What You Get |
+|----------|--------------|
+| **Together.ai** | Chat, image/video generation (free trial available) |
+| **OpenRouter** | 50+ free models, access to GPT-4, Claude, Gemini |
+| **Exa.ai** | Web search (1000 free/month) |
+
+**You pay the providers directly at their rates. OpenElara charges nothing.**
+
+**Your keys are stored in browser localStorage only—never sent to the server.**
+
+---
+
+## 🏗️ Deploy Your Own Instance
+
+### Prerequisites
+- [Node.js 22+](https://nodejs.org/)
+- [Firebase CLI](https://firebase.google.com/docs/cli)
+- Google Cloud account (free tier available)
+
+### Step 1: Clone & Setup
+```bash
+git clone https://github.com/applymytech/openElaraCloud.git
+cd openElaraCloud
+npm install
+```
+
+### Step 2: Firebase Project
+```bash
+# Create project in Firebase Console
+# https://console.firebase.google.com/
+
+firebase login
+firebase use --add
+# Select your project
+```
+
+### Step 3: Enable Services
+In [Firebase Console](https://console.firebase.google.com/):
+1. **Authentication** → Enable Google sign-in
+2. **Firestore Database** → Create database
+3. **Storage** → Create default bucket
+
+### Step 4: Configure & Deploy
+```bash
+# Copy Firestore rules template
+cp firestore.rules.template firestore.rules
+
+# For unlimited trial (your instance), edit firestore.rules:
+# Comment out line 16-18 (isTrialExpired function)
+
+# Build and deploy
+npm run build
+firebase deploy
+```
+
+Your app will be live at: `https://YOUR_PROJECT_ID.web.app`
+
+See [DEMO_DEPLOYMENT_GUIDE.md](./DEMO_DEPLOYMENT_GUIDE.md) for complete instructions.
+
+---
+
+## 📊 Cost Estimates
+
+### Firebase (Free Tier Generous)
+- **Hosting**: 10GB storage, 360MB/day bandwidth
+- **Firestore**: 1GB storage, 50k reads/day, 20k writes/day
+- **Storage**: 5GB, 1GB/day downloads
+- **Auth**: Unlimited
+
+### AI Provider Costs (Your Keys)
+- **Together.ai**: Pay-as-you-go (free trial available)
+- **OpenRouter**: Many free models! Premium models vary
+- **Exa.ai**: Free tier: 1000 searches/month
+
+**Example**: Most users spend $0-10/month total.
+
+---
+
+## 🔒 Privacy & Security
+
+### What We Store
+- ✅ User email (Firebase Auth)
+- ✅ Chat history (Firestore, user-scoped)
+- ✅ Generated images/videos (Firebase Storage, user-scoped)
+- ✅ Custom characters/personas (Firestore, user-scoped)
+
+### What We DON'T Store
+- ❌ API keys (localStorage only, never sent to server)
+- ❌ Payment information (users pay AI providers directly)
+- ❌ AI model responses (not logged server-side)
+
+### Trial Policy (Public Demo)
+- **Trial**: 7 days
+- **Content Retention**: 30 days after trial expiration (to help migration)
+- **Your Instance**: You control all retention policies!
+
+---
+
+## 🆚 Cloud vs Desktop
+
+| Feature | Cloud | Desktop |
+|---------|-------|---------|
+| **Chat with AI** | ✅ | ✅ |
+| **Image/Video Gen** | ✅ | ✅ |
+| **Character System** | ✅ | ✅ |
+| **Knowledge Base** | ✅ | ✅ |
+| **Code Studio** | ❌ | ✅ |
+| **Local Models** | ❌ | ✅ |
+| **Offline TTS** | ❌ | ✅ |
+| **PWA Install** | ✅ | ❌ |
+| **Multi-device** | ✅ | ❌ |
+
+**Want Code Studio?** Check out [openElara desktop](https://github.com/applymytech/openElara)
+
+---
+
+## 🛠️ Tech Stack
+
+- **Frontend**: Next.js 16 + React 19
+- **Backend**: Firebase (Auth, Firestore, Storage, Functions, Hosting)
+- **AI Providers**: Together.ai, OpenRouter, Exa.ai
+- **Runtime**: Node.js 22
+- **Language**: TypeScript
 
 ---
 
@@ -73,7 +208,7 @@ Every generated image includes cryptographic proof:
 
 **FREE for:**
 - ✅ Personal use
-- ✅ Education and learning
+- ✅ Education and learning  
 - ✅ Development and experimentation
 - ✅ Internal business use
 - ✅ Modifying and sharing
@@ -86,182 +221,35 @@ See [LICENSE](./LICENSE) for full details.
 
 ---
 
-## 🔑 Bring Your Own Key (BYOK)
+## 🌟 Why Sovereign AI?
 
-OpenElara Cloud is **completely free**. Users connect directly to AI providers using their own API keys:
+Traditional AI apps lock you into:
+- ❌ Monthly subscriptions
+- ❌ Vendor-controlled data
+- ❌ Usage limits
+- ❌ Privacy concerns
 
-| Provider | What You Get |
-|----------|--------------|
-| **Together.ai** | FLUX images, Wan video, Kokoro TTS, 200+ LLMs |
-| **OpenRouter** | Access to GPT-4, Claude, Gemini, and more |
-| **OpenAI** | Direct GPT-4o access |
-| **Anthropic** | Direct Claude access |
+OpenElara Cloud gives you:
+- ✅ **Your keys** - Direct relationships with AI providers
+- ✅ **Your data** - Stored in YOUR Firebase project
+- ✅ **Your costs** - Pay only for what you use
+- ✅ **Your control** - Deploy anywhere, modify freely
+- ✅ **Your privacy** - Keys never leave your browser
 
-**You pay the providers directly at their rates. OpenElara charges nothing.**
-
----
-
-## 🚀 Quick Start (15 minutes)
-
-### Prerequisites
-
-- Node.js 20+ installed
-- Google Cloud account (Firebase requires billing, generous free tier)
-- Together.ai API key ([get one free](https://together.ai))
-- OpenRouter API key ([get one free](https://openrouter.ai))
-
-### Step 1: Clone & Install
-
-```bash
-git clone https://github.com/applymytech/openElaraCloud.git
-cd openElaraCloud
-npm install
-cd functions && npm install && cd ..
-```
-
-### Step 2: Firebase Setup
-
-```bash
-# Install Firebase CLI
-npm install -g firebase-tools
-
-# Login
-firebase login
-
-# Create project at console.firebase.google.com, then:
-firebase init
-```
-
-Select: Firestore, Functions, Hosting, Storage
-
-### Step 3: Configure Environment
-
-```bash
-# Copy template files
-cp .env.local.template .env.local
-cp .firebaserc.template .firebaserc
-cp deploy.ps1.template deploy.ps1   # Windows
-```
-
-Edit `.env.local` with your Firebase config from the console.
-Edit `.firebaserc` with your Firebase project ID.
-
-> 📖 **See [SECRETS_SETUP.md](./SECRETS_SETUP.md) for complete secrets & configuration guide.**
-
-### Step 4: Deploy Rules & Test
-
-```bash
-# Deploy security rules
-firebase deploy --only firestore:rules,storage
-
-# Test locally
-npm run dev
-```
-
-### Step 5: Create First User
-
-1. Firebase Console → Authentication → Users → Add user
-2. Enter email and temporary password
-3. Share credentials with user
-
-### Step 6: Deploy
-
-```bash
-npm run build
-firebase deploy
-```
-
-🎉 Your sovereign AI assistant is live!
+**You are not the product. You ARE the platform.**
 
 ---
 
-## 📖 Documentation
+## 📱 Platform Support
 
-| Document | Purpose |
-|----------|---------|
-| [User Manual](./docs/USER_MANUAL.md) | Complete feature guide |
-| [Agent Setup Guide](./docs/AGENT_SETUP_GUIDE.md) | For AI assistants helping with setup |
-| [Privacy Policy](./PRIVACY.md) | How data is (not) collected |
-| [Terms of Service](./TERMS.md) | Your rights and responsibilities |
-| [License](./LICENSE) | The hobbyist license |
+| Platform | Status |
+|----------|--------|
+| **Web (Desktop)** | ✅ Fully supported |
+| **Web (Mobile)** | ✅ Fully supported |
+| **PWA Install** | ✅ Chrome, Edge, Safari |
+| **Native Apps** | ❌ Not needed (use PWA) |
 
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    User's Browser                        │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │              Next.js Frontend                    │   │
-│  │  • Chat with AI personas                        │   │
-│  │  • Image/Video generation                        │   │
-│  │  • Character system                              │   │
-│  │  • BYOK key management (localStorage)           │   │
-│  └─────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-                           │
-         BYOK Mode         │         Cloud Functions
-    (User's keys)          │         (Owner's keys)
-              │            │                 │
-              ▼            │                 ▼
-┌─────────────────────┐    │    ┌─────────────────────────┐
-│   AI Providers      │    │    │  Firebase Functions     │
-│   • Together.ai     │    │    │  (Fallback mode)        │
-│   • OpenRouter      │    │    │  ↓                      │
-│   • OpenAI          │    │    │  Secret Manager         │
-│   • Anthropic       │    │    │  ↓                      │
-│                     │    │    │  AI Providers           │
-└─────────────────────┘    │    └─────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────┐
-│              YOUR Firebase Project                       │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │   Firestore   │  │   Storage    │  │     Auth     │  │
-│  │  • Users      │  │  • Images    │  │  • Email/PW  │  │
-│  │  • Chats      │  │  • Videos    │  │  (invite     │  │
-│  │  • RAG data   │  │  • Uploads   │  │   only)      │  │
-│  └──────────────┘  └──────────────┘  └──────────────┘  │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🔐 Security
-
-- **User-scoped data**: Firestore rules ensure users only access their own data
-- **BYOK isolation**: API keys in localStorage, protected by same-origin policy
-- **HTTPS enforced**: Firebase Hosting requires HTTPS
-- **Invite-only**: No self-registration, admin controls access
-
----
-
-## 🌐 What's Different from Desktop?
-
-| Feature | Desktop | Cloud |
-|---------|---------|-------|
-| Storage | Local filesystem | Firebase Storage |
-| Database | Local JSON | Firestore |
-| Auth | None (local) | Email/Password |
-| API Keys | Config file | Browser localStorage |
-| Code Execution | Full terminal | ❌ Not available |
-| Local AI (Ollama) | ✅ Supported | ❌ Not available |
-
-**Want Code Studio?** Use the [Desktop app](https://github.com/applymytech/openElara).
-
----
-
-## 📧 Contact
-
-| Purpose | Email |
-|---------|-------|
-| General | openelara@applymytech.ai |
-| Support | support@applymytech.ai |
-| Privacy | privacy@applymytech.ai |
-| Commercial | openelara@applymytech.ai |
-
-**GitHub:** [github.com/applymytech/openElaraCloud](https://github.com/applymytech/openElaraCloud)
+Works on any device with a modern browser!
 
 ---
 
@@ -275,19 +263,34 @@ firebase deploy
 
 ---
 
-## 📋 Related Projects
+## 📋 Documentation
 
-Part of the **Elara Sovereign Collection**:
+- [Demo Deployment Guide](./DEMO_DEPLOYMENT_GUIDE.md) - Complete deployment instructions
+- [User Manual](./docs/USER_MANUAL.md) - How to use the app
+- [AI Deployment Guide](./AI_DEPLOYMENT_GUIDE.md) - Firebase specifics
+- [Privacy Policy](./PRIVACY.md) - What we collect (spoiler: almost nothing)
+- [Terms of Service](./TERMS.md) - Your rights and responsibilities
 
-- [OpenElara Desktop](https://github.com/applymytech/openElara) - Full-featured desktop app with Code Studio
-- [OpenElara Cloud](https://github.com/applymytech/openElaraCloud) - This repo
-- [Elara CRM](https://github.com/applymytech/elaraCRM) - Customer Management (coming soon)
+---
+
+## 📧 Contact
+
+| Purpose | Email |
+|---------|-------|
+| General | openelara@applymytech.ai |
+| Support | support@applymytech.ai |
+| Privacy | privacy@applymytech.ai |
+| Commercial | openelara@applymytech.ai |
+
+**GitHub:** 
+- [Cloud Version](https://github.com/applymytech/openElaraCloud) (this repo)
+- [Desktop Version](https://github.com/applymytech/openElara) (with Code Studio)
 
 ---
 
 ## 🙏 Thanks
 
-Thanks for checking out OpenElara Cloud! Whether you use it, learn from it, or just think it's interesting—I appreciate you taking the time.
+Thanks for checking out OpenElara Cloud! Whether you use the demo, deploy your own, or just think it's interesting—I appreciate you taking the time.
 
 If you build something cool with it, I'd love to hear about it!
 
@@ -295,4 +298,13 @@ If you build something cool with it, I'd love to hear about it!
 
 ---
 
-**Version:** 1.0.0 | **Updated:** January 2026 | **License:** [Hobbyist License](./LICENSE)
+## 🔗 Related Projects
+
+- **[openElara Desktop](https://github.com/applymytech/openElara)** - Full-featured desktop app with Code Studio
+- **[Together.ai](https://www.together.ai/)** - Image/video generation API
+- **[OpenRouter](https://openrouter.ai/)** - Multi-model chat routing
+- **[Exa.ai](https://exa.ai/)** - Web search for AI
+
+---
+
+**⭐ Star us on GitHub if you find this useful!**

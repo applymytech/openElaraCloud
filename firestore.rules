@@ -22,71 +22,18 @@ service cloud.firestore {
     // USER PROFILES
     // ========================================
     match /users/{userId} {
-      // Users can only read/write their own profile
-      // Block access if trial expired
-      allow read: if isAuthenticated() && isOwner(userId);
-      allow write: if isAuthenticated() && isOwner(userId) && 
-                     (!exists(/databases/$(database)/documents/users/$(userId)) || 
-                      !isTrialExpired(resource.data));
+      // Simple: authenticated users can access their own data
+      // Trial enforcement happens at login (app level), not here
+      allow read, write: if isAuthenticated() && isOwner(userId);
       
-      // User's chat history
-      match /chats/{chatId} {
+      // All subcollections
+      match /{subcollection}/{docId} {
         allow read, write: if isAuthenticated() && isOwner(userId);
         
-        // Messages within a chat
-        match /messages/{messageId} {
+        // Nested collections
+        match /{nestedCollection}/{nestedDocId} {
           allow read, write: if isAuthenticated() && isOwner(userId);
         }
-      }
-      
-      // User's settings
-      match /settings/{settingId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's generated images (kept 30 days after trial)
-      match /images/{imageId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's generated videos (kept 30 days after trial)
-      match /videos/{videoId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's file attachments (for chat context)
-      match /attachments/{attachmentId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's RAG documents (conversation history, knowledge files)
-      match /rag/{ragId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's temporary media storage (images, videos, audio)
-      match /media/{mediaId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's custom characters (kept 30 days after trial)
-      match /characters/{characterId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's personas (kept 30 days after trial)
-      match /personas/{personaId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // Usage tracking
-      match /usage/{usageId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's private data (signing keys, etc.)
-      match /private/{privateId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
       }
     }
     

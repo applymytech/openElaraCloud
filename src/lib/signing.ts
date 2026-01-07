@@ -394,13 +394,37 @@ export async function signImage(
         // Calculate final content hash
         metadata.contentHash = await sha256(signedDataUrl);
         
+        // Add visible PNG metadata layer (server-side)
+        let finalDataUrl = signedDataUrl;
+        try {
+          const { getFunctions, httpsCallable } = await import('firebase/functions');
+          const functions = getFunctions();
+          const addMetadata = httpsCallable(functions, 'signImageMetadata');
+          
+          const result = await addMetadata({
+            imageBase64: signedDataUrl,
+            metadata: {
+              userId: metadata.userId,
+              model: metadata.modelUsed,
+              character: metadata.characterName,
+              timestamp: metadata.generatedAt,
+            }
+          }) as { data: { signedImage: string } };
+          
+          if (result.data?.signedImage) {
+            finalDataUrl = result.data.signedImage;
+          }
+        } catch (e) {
+          console.warn('[Signing] Could not add visible PNG metadata (fallback to steganography only):', e);
+        }
+        
         // Store in local registry for verification
         storeGeneratedContent(metadata);
         
-        console.log(`[Signing] Image signed with hash: ${metadata.contentHash?.slice(0, 16)}...`);
+        console.log(`[Signing] Image signed (2-layer) with hash: ${metadata.contentHash?.slice(0, 16)}...`);
         
         resolve({
-          dataUrl: signedDataUrl,
+          dataUrl: finalDataUrl,
           metadata,
           metadataJson: JSON.stringify(metadata, null, 2),
         });

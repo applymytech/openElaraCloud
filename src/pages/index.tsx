@@ -65,7 +65,11 @@ export default function Login() {
     const userSnap = await getDoc(userRef);
 
     if (!userSnap.exists()) {
-      // First time login - create profile + trial
+      // First time login - create profile + trial in one operation
+      const now = new Date();
+      const trialExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const contentDeleteAt = new Date(trialExpiresAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+      
       await setDoc(userRef, {
         email: user.email,
         displayName: user.displayName || user.email?.split("@")[0],
@@ -80,10 +84,12 @@ export default function Login() {
           theme: "nexus",
           defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
         },
+        // Trial fields
+        trialCreatedAt: serverTimestamp(),
+        trialExpiresAt: trialExpiresAt,
+        contentDeleteAt: contentDeleteAt,
+        trialWarningsShown: 0,
       });
-      
-      // Initialize 7-day trial
-      await initializeTrial(user.uid);
     } else {
       // Update last login
       await setDoc(userRef, { lastLoginAt: serverTimestamp() }, { merge: true });
@@ -148,8 +154,8 @@ export default function Login() {
             <div className="byok-banner-content">
               <p><strong>Before you sign in, get your FREE API keys:</strong></p>
               <ul>
-                <li><strong>Together.ai</strong> - Chat, images, video ($25 free credit) <a href="https://api.together.xyz" target="_blank" rel="noopener">→ Get Key</a></li>
-                <li><strong>OpenRouter</strong> - 50+ free models, access to all ($5 free credit) <a href="https://openrouter.ai" target="_blank" rel="noopener">→ Get Key</a></li>
+                <li><strong>Together.ai</strong> - Chat, images, video (free trial available) <a href="https://api.together.xyz" target="_blank" rel="noopener">→ Get Key</a></li>
+                <li><strong>OpenRouter</strong> - 50+ free models, access to all <a href="https://openrouter.ai" target="_blank" rel="noopener">→ Get Key</a></li>
                 <li><strong>Exa.ai</strong> - Web search (1000 free searches) <a href="https://exa.ai" target="_blank" rel="noopener">→ Get Key</a></li>
               </ul>
               <p className="byok-warning">
