@@ -651,7 +651,7 @@ export async function generateVideo(
   const idToken = await user.getIdToken();
   
   // STEP 1: Create the video generation JOB via Cloud Function
-  const functionsUrl = import.meta.env.VITE_FUNCTIONS_URL || 'https://us-central1-openelaracloud.cloudfunctions.net';
+  const functionsUrl = process.env.NEXT_PUBLIC_FUNCTIONS_URL || 'https://us-central1-openelaracloud.cloudfunctions.net';
   const createResponse = await fetch(`${functionsUrl}/generateVideo`, {
     method: 'POST',
     headers: {
