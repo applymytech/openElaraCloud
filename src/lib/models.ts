@@ -779,6 +779,27 @@ export const VIDEO_MODEL_METADATA: Record<string, VideoModelMetadata> = {
     },
     recommended: true,
   },
+  "Wan-AI/Wan2.1-T2V-14B": {
+    displayName: "Wan 2.1 T2V 14B",
+    description: "Text to video, 14B parameters",
+    maxDuration: 6,
+    resolutions: ["1024x576", "576x1024"],
+    defaultResolution: "1024x576",
+    fps: 24,
+    features: {
+      t2v: true,
+      i2v: false,
+      firstFrame: false,
+      lastFrame: false,
+      audio: false,
+    },
+    parameterSupport: {
+      negative_prompt: false,
+      guidance_scale: true,
+      steps: true,
+    },
+    recommended: false,
+  },
   "google/veo-3.0-audio": {
     displayName: "Google Veo 3.0 + Audio",
     description: "8s, 1080p/720p, with generated audio",
@@ -1361,6 +1382,12 @@ export function getRecommendedVideoModels(): string[] {
     .map(([id]) => id);
 }
 
+export function getRecommendedVoiceModels(): string[] {
+  return Object.entries(VOICE_MODEL_METADATA)
+    .filter(([_, meta]) => meta.recommended)
+    .map(([id]) => id);
+}
+
 /**
  * Get cost-effective video models suitable for agent selfies
  * These are cheaper/faster models ideal for autonomous generation
@@ -1386,51 +1413,70 @@ export function setSelectedModel(type: ModelType, modelId: string): void {
 }
 
 export function getDefaultChatModel(): string {
-  // First: use user's last selection if available
+  // First: use user's last selection if available (must be recommended)
   const selected = getSelectedModel('chat');
-  if (selected) return selected;
-  
-  // Second: find first free model
-  const freeModels = Object.entries(CHAT_MODEL_METADATA)
-    .filter(([_, meta]) => meta.free)
-    .map(([id]) => id);
-  
-  if (freeModels.length > 0) {
-    return freeModels[0];
+  if (selected && CHAT_MODEL_METADATA[selected]?.recommended) {
+    return selected;
   }
   
-  // Third: first recommended model
+  // ONLY recommended models are valid - find first free + recommended
+  const freeRecommended = Object.entries(CHAT_MODEL_METADATA)
+    .filter(([_, meta]) => meta.free && meta.recommended)
+    .map(([id]) => id);
+  
+  if (freeRecommended.length > 0) {
+    return freeRecommended[0];
+  }
+  
+  // If no free+recommended, use first recommended
   const recommended = getRecommendedChatModels();
   if (recommended.length > 0) {
     return recommended[0];
   }
   
-  // Last resort: first available model in metadata
-  const allModels = Object.keys(CHAT_MODEL_METADATA);
-  return allModels[0] || 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo-Free';
+  // CRITICAL: If no recommended models, throw error - do not fallback
+  throw new Error('No recommended chat models configured in CHAT_MODEL_METADATA');
 }
 
 export function getDefaultImageModel(): string {
   const selected = getSelectedModel('image');
-  if (selected) return selected;
-  
-  // Prefer free tier
-  const freeModels = Object.entries(IMAGE_MODEL_METADATA)
-    .filter(([_, meta]) => meta.free)
-    .map(([id]) => id);
-  
-  if (freeModels.length > 0) {
-    return freeModels[0];
+  if (selected && IMAGE_MODEL_METADATA[selected]?.recommended) {
+    return selected;
   }
   
-  return 'black-forest-labs/FLUX.1-schnell';
+  // ONLY recommended models are valid - prefer free + recommended
+  const freeRecommended = Object.entries(IMAGE_MODEL_METADATA)
+    .filter(([_, meta]) => meta.free && meta.recommended)
+    .map(([id]) => id);
+  
+  if (freeRecommended.length > 0) {
+    return freeRecommended[0];
+  }
+  
+  // If no free+recommended, use first recommended
+  const recommended = getRecommendedImageModels();
+  if (recommended.length > 0) {
+    return recommended[0];
+  }
+  
+  // CRITICAL: If no recommended models, throw error - do not fallback
+  throw new Error('No recommended image models configured in IMAGE_MODEL_METADATA');
 }
 
 export function getDefaultVideoModel(): string {
   const selected = getSelectedModel('video');
-  if (selected) return selected;
+  if (selected && VIDEO_MODEL_METADATA[selected]?.recommended) {
+    return selected;
+  }
   
-  return 'google/veo-3.0';
+  // ONLY recommended models are valid
+  const recommended = getRecommendedVideoModels();
+  if (recommended.length > 0) {
+    return recommended[0];
+  }
+  
+  // CRITICAL: If no recommended models, throw error - do not fallback
+  throw new Error('No recommended video models configured in VIDEO_MODEL_METADATA');
 }
 
 export function clearModelsCache(): void {

@@ -43,7 +43,9 @@ interface VideoGenPanelProps {
 export default function VideoGenPanel({ onClose, onVideoGenerated, conversationContext }: VideoGenPanelProps) {
   const [mode, setMode] = useState<'selfie' | 'custom'>('selfie');
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState('Wan-AI/Wan2.1-T2V-14B');
+  // ONLY use recommended models - get first recommended model
+  const firstRecommended = Object.entries(VIDEO_MODELS).find(([_, config]) => config.recommended)?.[0] || 'google/veo-3.0';
+  const [model, setModel] = useState(firstRecommended);
   const [duration, setDuration] = useState(5);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -221,11 +223,13 @@ export default function VideoGenPanel({ onClose, onVideoGenerated, conversationC
           onChange={(e) => setModel(e.target.value)}
           className="nexus-input"
         >
-          {Object.entries(VIDEO_MODELS).map(([id, config]) => (
-            <option key={id} value={id}>
-              {config.displayName} ({config.maxDuration}s max)
-            </option>
-          ))}
+          {Object.entries(VIDEO_MODELS)
+            .filter(([_, config]) => config.recommended)
+            .map(([id, config]) => (
+              <option key={id} value={id}>
+                {config.displayName} ({config.maxDuration}s max)
+              </option>
+            ))}
         </select>
       </div>
       
@@ -264,7 +268,11 @@ export default function VideoGenPanel({ onClose, onVideoGenerated, conversationC
       {mode === 'selfie' && (
         <div className="character-preview">
           <div className="preview-header">
-            <span className="preview-icon">{character.iconEmoji}</span>
+            {character.iconPath ? (
+              <img src={character.iconPath} alt={character.name} className="preview-icon" />
+            ) : (
+              <span className="preview-icon">{character.iconEmoji}</span>
+            )}
             <span className="preview-name">{character.name}</span>
           </div>
           <p className="preview-description">
@@ -290,7 +298,11 @@ export default function VideoGenPanel({ onClose, onVideoGenerated, conversationC
       {aiDecision && !generating && (
         <div className="ai-decision">
           <div className="ai-decision-header">
-            <span className="ai-decision-icon">{character.iconEmoji}</span>
+            {character.iconPath ? (
+              <img src={character.iconPath} alt={character.name} className="ai-decision-icon" />
+            ) : (
+              <span className="ai-decision-icon">{character.iconEmoji}</span>
+            )}
             <span className="ai-decision-label">{character.name}'s Decision</span>
           </div>
           <p className="ai-decision-text">{aiDecision}</p>
@@ -373,7 +385,7 @@ export default function VideoGenPanel({ onClose, onVideoGenerated, conversationC
           border: 1px solid var(--glass-border);
           border-radius: var(--border-radius-lg);
           padding: var(--spacing-lg);
-          max-width: 500px;
+          max-width: 1100px;
           max-height: 90vh;
           overflow-y: auto;
         }
@@ -466,6 +478,10 @@ export default function VideoGenPanel({ onClose, onVideoGenerated, conversationC
         
         .preview-icon {
           font-size: 1.5rem;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          object-fit: cover;
         }
         
         .preview-name {
@@ -509,6 +525,10 @@ export default function VideoGenPanel({ onClose, onVideoGenerated, conversationC
         
         .ai-decision-icon {
           font-size: 1.25rem;
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          object-fit: cover;
         }
         
         .ai-decision-label {

@@ -188,7 +188,7 @@ export async function pinFile(
     updatedAt: new Date(),
     metadata: {
       originalName: file.name,
-      language,
+      language: language || 'plaintext', // Default to 'plaintext' instead of undefined
       lineCount: content.split('\n').length,
     },
   };

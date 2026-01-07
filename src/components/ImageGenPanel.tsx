@@ -39,7 +39,9 @@ interface ImageGenPanelProps {
 export default function ImageGenPanel({ onClose, onImageGenerated, conversationContext }: ImageGenPanelProps) {
   const [mode, setMode] = useState<'selfie' | 'custom'>('selfie');
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState('black-forest-labs/FLUX.1-schnell');
+  // ONLY use recommended models - get first recommended model
+  const firstRecommended = Object.entries(IMAGE_MODELS).find(([_, config]) => config.recommended)?.[0] || 'black-forest-labs/FLUX.1-schnell';
+  const [model, setModel] = useState(firstRecommended);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GeneratedImage | null>(null);
@@ -161,9 +163,11 @@ export default function ImageGenPanel({ onClose, onImageGenerated, conversationC
           onChange={(e) => setModel(e.target.value)}
           className="nexus-input"
         >
-          {Object.entries(IMAGE_MODELS).map(([id, config]) => (
-            <option key={id} value={id}>{config.displayName}</option>
-          ))}
+          {Object.entries(IMAGE_MODELS)
+            .filter(([_, config]) => config.recommended)
+            .map(([id, config]) => (
+              <option key={id} value={id}>{config.displayName}</option>
+            ))}
         </select>
       </div>
       
@@ -189,7 +193,11 @@ export default function ImageGenPanel({ onClose, onImageGenerated, conversationC
       {mode === 'selfie' && (
         <div className="character-preview">
           <div className="preview-header">
-            <span className="preview-icon">{character.iconEmoji}</span>
+            {character.iconPath ? (
+              <img src={character.iconPath} alt={character.name} className="preview-icon" />
+            ) : (
+              <span className="preview-icon">{character.iconEmoji}</span>
+            )}
             <span className="preview-name">{character.name}</span>
           </div>
           <p className="preview-description">
@@ -215,7 +223,11 @@ export default function ImageGenPanel({ onClose, onImageGenerated, conversationC
       {aiDecision && !generating && (
         <div className="ai-decision">
           <div className="ai-decision-header">
-            <span className="ai-decision-icon">{character.iconEmoji}</span>
+            {character.iconPath ? (
+              <img src={character.iconPath} alt={character.name} className="ai-decision-icon" />
+            ) : (
+              <span className="ai-decision-icon">{character.iconEmoji}</span>
+            )}
             <span className="ai-decision-label">{character.name}'s Decision</span>
           </div>
           <p className="ai-decision-text">{aiDecision}</p>
@@ -282,7 +294,7 @@ export default function ImageGenPanel({ onClose, onImageGenerated, conversationC
           border: 1px solid var(--glass-border);
           border-radius: var(--border-radius-lg);
           padding: var(--spacing-lg);
-          max-width: 500px;
+          max-width: 1100px;
           max-height: 90vh;
           overflow-y: auto;
         }
@@ -366,6 +378,10 @@ export default function ImageGenPanel({ onClose, onImageGenerated, conversationC
         
         .preview-icon {
           font-size: 1.5rem;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          object-fit: cover;
         }
         
         .preview-name {
@@ -444,6 +460,10 @@ export default function ImageGenPanel({ onClose, onImageGenerated, conversationC
         
         .ai-decision-icon {
           font-size: 1.25rem;
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          object-fit: cover;
         }
         
         .ai-decision-label {

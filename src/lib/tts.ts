@@ -116,17 +116,18 @@ export const TTS_MODELS: TTSModel[] = [
     voices: ORPHEUS_VOICES,
   },
   {
-    id: 'cartesia/sonic',
-    name: 'Cartesia Sonic',
-    description: 'Premium quality TTS',
+    id: 'cartesia/sonic-2',
+    name: 'Cartesia Sonic 2',
+    description: 'Premium quality TTS (RECOMMENDED)',
     maxTextLength: 10000,
     costPerMillion: 100,
     voices: CARTESIA_VOICES,
   },
 ];
 
-export const DEFAULT_TTS_MODEL = 'hexgrad/Kokoro-82M';
-export const DEFAULT_VOICE = 'af_heart';
+// ONLY recommended models are valid - cartesia/sonic-2 (matches VOICE_MODEL_METADATA)
+export const DEFAULT_TTS_MODEL = 'cartesia/sonic-2';
+export const DEFAULT_VOICE = 'a167e0f3-df7e-4d52-a9c3-f949145efdab'; // alloy
 
 // ============================================================================
 // VOICE VALIDATION (from desktop)

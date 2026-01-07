@@ -203,6 +203,103 @@ export const generateImage = functions.https.onRequest(async (req, res) => {
 });
 
 // ============================================================================
+// VIDEO GENERATION ENDPOINT (Async Job Creation + Polling)
+// ============================================================================
+
+export const generateVideo = functions.https.onRequest(async (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+
+  const user = await verifyAuth(req);
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const apiKey = await getSecret("TOGETHER_API_KEY");
+  if (!apiKey) {
+    res.status(500).json({ error: "API key not configured" });
+    return;
+  }
+
+  try {
+    if (req.method === "POST") {
+      // CREATE VIDEO GENERATION JOB
+      const { prompt, model, width, height, seconds, guidanceScale, seed, negativePrompt, frameImages } = req.body;
+
+      const requestBody: Record<string, any> = {
+        model: model || "minimax/video-01",
+        prompt,
+        width: width || 1024,
+        height: height || 576,
+        seconds: seconds || 5,
+      };
+
+      // Add optional parameters
+      if (guidanceScale !== undefined) {
+        requestBody.guidance_scale = guidanceScale;
+      }
+      if (seed !== undefined) {
+        requestBody.seed = seed;
+      }
+      if (negativePrompt) {
+        requestBody.negative_prompt = negativePrompt;
+      }
+      if (frameImages) {
+        requestBody.frame_images = frameImages;
+      }
+
+      const response = await fetch("https://api.together.xyz/v1/video/generations", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        res.status(response.status).json(data);
+        return;
+      }
+
+      res.json(data);
+    } else if (req.method === "GET") {
+      // POLL VIDEO GENERATION JOB STATUS
+      const jobId = req.query.jobId as string;
+      
+      if (!jobId) {
+        res.status(400).json({ error: "Missing jobId parameter" });
+        return;
+      }
+
+      const response = await fetch(`https://api.together.xyz/v1/video/generations/${jobId}`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+        },
+      });
+
+      const data = await response.json();
+      res.json(data);
+    } else {
+      res.status(405).json({ error: "Method not allowed" });
+    }
+  } catch (error) {
+    console.error("Video generation error:", error);
+    res.status(500).json({ error: "Failed to process video request" });
+  }
+});
+
+// ============================================================================
 // HEALTH CHECK (Admin only)
 // ============================================================================
 

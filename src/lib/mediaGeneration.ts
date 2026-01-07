@@ -16,6 +16,7 @@
  * - Exa.ai: Web search (optional)
  */
 
+import { auth } from './firebase';
 import { getAPIKey } from './byok';
 import { getActiveCharacter, type Character } from './characters';
 import { generateMetadata, signImage, type SignedContent } from './signing';
@@ -582,11 +583,6 @@ export interface GeneratedVideo {
 export async function generateVideo(
   options: VideoGenerationOptions
 ): Promise<GeneratedVideo> {
-  const togetherKey = getAPIKey('together');
-  if (!togetherKey) {
-    throw new Error('Together.ai API key required. Add it in Settings.');
-  }
-  
   const model = options.model || getDefaultVideoModel();
   const modelConfig = getVideoModelMetadata(model);
   
@@ -647,11 +643,19 @@ export async function generateVideo(
   
   console.log(`[Video Gen] Creating job with model: ${model}`);
   
-  // STEP 1: Create the video generation JOB
-  const createResponse = await fetch('https://api.together.xyz/v1/video/generations', {
+  // Get Firebase ID token for authentication
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('Must be logged in to generate videos');
+  }
+  const idToken = await user.getIdToken();
+  
+  // STEP 1: Create the video generation JOB via Cloud Function
+  const functionsUrl = import.meta.env.VITE_FUNCTIONS_URL || 'https://us-central1-openelaracloud.cloudfunctions.net';
+  const createResponse = await fetch(`${functionsUrl}/generateVideo`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${togetherKey}`,
+      'Authorization': `Bearer ${idToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(requestBody),
@@ -659,7 +663,7 @@ export async function generateVideo(
   
   if (!createResponse.ok) {
     const error = await createResponse.json().catch(() => ({}));
-    throw new Error(error.error?.message || `Video generation failed: ${createResponse.statusText}`);
+    throw new Error(error.error || `Video generation failed: ${createResponse.statusText}`);
   }
   
   const jobData = await createResponse.json();
@@ -671,7 +675,7 @@ export async function generateVideo(
   
   console.log(`[Video Gen] Job created: ${jobId}`);
   
-  // STEP 2: Poll for completion
+  // STEP 2: Poll for completion via Cloud Function
   let attempts = 0;
   const maxAttempts = 120; // 10 minutes max (5 sec intervals)
   const pollInterval = 5000; // 5 seconds
@@ -682,10 +686,10 @@ export async function generateVideo(
     
     console.log(`[Video Gen] Polling job ${jobId} (attempt ${attempts}/${maxAttempts})`);
     
-    const statusResponse = await fetch(`https://api.together.xyz/v1/video/generations/${jobId}`, {
+    const statusResponse = await fetch(`${functionsUrl}/generateVideo?jobId=${jobId}`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${togetherKey}`,
+        'Authorization': `Bearer ${idToken}`,
       },
     });
     
