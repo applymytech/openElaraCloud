@@ -1,0 +1,115 @@
+OpenElara Cloud License
+========================
+
+Copyright (c) 2025-2026 Andrew Quartly / Apply My Tech
+
+## 🎁 A Gift to the World
+
+OpenElara Cloud is my gift to you. I don't want your data. I don't want your money 
+(unless you build a commercial product - then let's talk). 
+
+There is no secret data mining. No telemetry. No hidden agenda. No "premium 
+tier" coming later. Elara is yours - use her well.
+
+## The Spirit of This License
+
+Hi, I'm Andrew - a hobbyist developer with a dream. OpenElara Cloud is my vision 
+of what a sovereign AI assistant could look like: running on YOUR Firebase 
+infrastructure, calling AI services with YOUR keys, and putting YOU in control.
+
+This isn't a commercial product. It's a **demonstration and educational tool**.
+I built it to learn, to teach, and to show what's possible.
+
+## What You Can Do (FREE)
+
+You can use OpenElara Cloud completely FREE for:
+
+✅ **Personal Use** - Chat with AI, generate images, explore AI capabilities
+✅ **Education** - Learn about AI, study the code, teach others
+✅ **Development** - Build your skills, experiment, prototype
+✅ **Business** - Deploy it internally for your company
+✅ **Research** - Study how sovereign AI assistants can work
+✅ **Modify** - Change the code, add features, make it yours
+✅ **Distribute** - Share it with friends, colleagues, students
+
+## The Only Thing I Ask
+
+If you build a **commercial product** that incorporates OpenElara Cloud's code or 
+architecture - something you sell to customers or use as the basis for a paid 
+service - then please reach out about a commercial license.
+
+I'm not here to squeeze you. My philosophy is simple:
+- **1% of a million is better than 50% of nothing**
+- **I want you to succeed**
+- **Don't worry about how much you pay me, just pay me something**
+
+If you're making money FROM OpenElara (not just WITH it), let's talk. We'll work 
+something out that's fair and doesn't kill your business.
+
+Email: openelara@applymytech.ai
+
+## What This Is
+
+OpenElara Cloud is:
+- 🎓 An **educational demonstration** of sovereign cloud AI architecture
+- 🔬 A **proof of concept** for BYOK + BYOC (Bring Your Own Key + Cloud)
+- 🛠️ A **hobbyist project** that grew into something useful
+- 💡 A **vision** of how AI could work: user-controlled, self-hosted
+
+## BYOK + BYOC Philosophy
+
+**Bring Your Own Key (BYOK):**
+- You provide your own API keys (Together.ai, OpenRouter, OpenAI, etc.)
+- You pay AI providers directly at their rates
+- Your keys stay in YOUR browser - never on our servers
+
+**Bring Your Own Cloud (BYOC):**
+- You deploy to YOUR Firebase project
+- Your data lives in YOUR Firestore
+- Your files go to YOUR Firebase Storage
+- You control everything
+
+We don't charge for the app. We don't take a cut. It's your infrastructure.
+
+## No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+This is a hobbyist project. Things might break. I'll do my best to help, but 
+there's no support hotline or guaranteed response time.
+
+## Open Source Promise
+
+Don't trust us? Good! OpenElara Cloud is open source so you can:
+- Review all source code
+- Verify our claims
+- Build from source
+- Fork and modify
+
+Repository: https://github.com/applymytech/openElaraCloud
+
+## Legal Summary
+
+Permission is hereby granted, free of charge, to any person obtaining a copy 
+of this software and associated documentation files, to use, copy, modify, and 
+distribute the Software for personal, educational, and internal business 
+purposes, subject to the following conditions:
+
+1. The copyright notice and this permission notice shall be included in all 
+   copies or substantial portions of the Software.
+
+2. Commercial distribution requires a separate commercial license.
+
+3. The names "OpenElara" and "Apply My Tech" may not be used to endorse 
+   derivative works without written permission.
+
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, 
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE 
+USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+Thanks for trying OpenElara Cloud! I hope you find it useful. - Andrew
