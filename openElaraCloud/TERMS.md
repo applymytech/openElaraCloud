@@ -175,19 +175,33 @@ Continued use after changes means acceptance of new terms.
 
 ---
 
-## 12. Contact
+## 12. Open Source
 
-| Purpose | Email |
+OpenElara Cloud is open source. You can:
+- Review all source code
+- Verify our claims
+- Fork and modify
+- Contribute improvements
+
+**Repository:** https://github.com/applymytech/openElaraCloud
+
+---
+
+## 13. Contact
+
+| Purpose | Contact |
 |---------|-------|
 | General | openelara@applymytech.ai |
 | Support | support@applymytech.ai |
 | Privacy | privacy@applymytech.ai |
 | Legal | legal@applymytech.ai |
 | Commercial licensing | openelara@applymytech.ai |
+| GitHub | https://github.com/applymytech/openElaraCloud |
+| Issues | https://github.com/applymytech/openElaraCloud/issues |
 
 ---
 
-## 13. Governing Law
+## 14. Governing Law
 
 These terms are governed by the laws applicable in your jurisdiction. We're a hobbyist project, not a multinational corporation - let's be reasonable with each other.
 

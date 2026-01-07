@@ -305,6 +305,9 @@ If you're trying to set this up yourself, you'll need to deploy your own instanc
 - **Updated**: ${LAST_UPDATED}
 - **Platform**: Next.js 16 + Firebase
 - **Runtime**: Node.js 22+
+- **Repository**: https://github.com/applymytech/openElaraCloud
+- **Issues**: https://github.com/applymytech/openElaraCloud/issues
+- **Desktop App**: https://github.com/applymytech/openElara
 
 ---
 

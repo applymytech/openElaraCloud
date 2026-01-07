@@ -199,11 +199,22 @@ This privacy policy may be updated as the application evolves. Check the "Last U
 
 ## Contact
 
-| Purpose | Email |
+| Purpose | Contact |
 |---------|-------|
 | Privacy questions | privacy@applymytech.ai |
 | General | openelara@applymytech.ai |
 | Support | support@applymytech.ai |
+| GitHub | https://github.com/applymytech/openElaraCloud |
+
+---
+
+## Open Source
+
+Don't trust these claims? Good! OpenElara Cloud is open source:
+
+**Repository:** https://github.com/applymytech/openElaraCloud
+
+Review the code yourself. Verify our privacy claims. Fork and audit.
 
 ---
 
