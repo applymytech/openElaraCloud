@@ -1,0 +1,593 @@
+/*
+ * NEXUS THEME - OpenElara Cloud
+ * Futuristic AI Interface - Glass-morphism meets neon accents
+ * Ported from OpenElara Desktop
+ */
+
+/* ==========================================================================
+   1. THEME VARIABLES - Nexus Dark
+   ========================================================================== */
+
+:root {
+  /* Primary colors - Nexus cyan accent */
+  --color-primary: #00d4ff;
+  --color-primary-hover: #00a3cc;
+  --color-primary-text: #ffffff;
+  --color-primary-gradient: linear-gradient(135deg, #00d4ff 0%, #00a3cc 100%);
+
+  /* Secondary - Purple accent */
+  --color-secondary: #a855f7;
+  --color-secondary-hover: #9333ea;
+
+  /* Background colors - Deep dark */
+  --main-bg-color: #0a0e17;
+  --secondary-bg-color: #131821;
+  --tertiary-bg-color: #1a1f2e;
+  
+  /* Text colors */
+  --main-text-color: #e8edf5;
+  --secondary-text-color: #a8b2c1;
+  --accent-contrast-text-color: #ffffff;
+
+  /* Accent colors */
+  --accent-color: #00d4ff;
+  --accent-color-hover: #00a3cc;
+  
+  /* Message bubbles */
+  --message-user-bg: linear-gradient(135deg, #00d4ff 0%, #00a3cc 100%);
+  --message-ai-bg: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+  
+  /* Status colors */
+  --error-color: #ff5757;
+  --success-color: #00ffaa;
+  --warning-color: #ffaa00;
+  
+  /* Glass morphism */
+  --glass-bg-primary: rgba(255, 255, 255, 0.03);
+  --glass-bg-secondary: rgba(255, 255, 255, 0.06);
+  --glass-bg-hover: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-hover: rgba(255, 255, 255, 0.15);
+  
+  /* Glow effects */
+  --glow-primary: 0 0 20px rgba(0, 212, 255, 0.3);
+  --glow-primary-intense: 0 0 30px rgba(0, 212, 255, 0.5), 0 0 60px rgba(0, 212, 255, 0.2);
+  --glow-secondary: 0 0 20px rgba(168, 85, 247, 0.3);
+  
+  /* Elevations */
+  --elevation-1: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --elevation-2: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --elevation-3: 0 8px 32px rgba(0, 0, 0, 0.4);
+
+  /* Border */
+  --border-color: rgba(255, 255, 255, 0.1);
+  --border-radius: 12px;
+  --border-radius-lg: 16px;
+  --border-radius-full: 9999px;
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ==========================================================================
+   2. BASE RESET & GLOBAL STYLES
+   ========================================================================== */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--main-bg-color);
+  color: var(--main-text-color);
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--secondary-bg-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--glass-border-hover);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-color);
+}
+
+/* ==========================================================================
+   3. NEXUS BUTTONS
+   ========================================================================== */
+
+.nexus-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: 12px 24px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-family: inherit;
+  border-radius: var(--border-radius);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  overflow: hidden;
+}
+
+.nexus-btn::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: width 300ms ease, height 300ms ease;
+}
+
+.nexus-btn:active::before {
+  width: 300px;
+  height: 300px;
+}
+
+/* Primary - Glowing cyan */
+.nexus-btn-primary {
+  background: var(--color-primary-gradient);
+  color: var(--accent-contrast-text-color);
+  box-shadow: var(--glow-primary), var(--elevation-2);
+}
+
+.nexus-btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: var(--glow-primary-intense), var(--elevation-3);
+}
+
+/* Secondary - Glass surface */
+.nexus-btn-secondary {
+  background: var(--glass-bg-secondary);
+  color: var(--main-text-color);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(12px);
+}
+
+.nexus-btn-secondary:hover:not(:disabled) {
+  background: var(--glass-bg-hover);
+  border-color: var(--glass-border-hover);
+  transform: translateY(-2px);
+}
+
+/* Danger - Red glow */
+.nexus-btn-danger {
+  background: linear-gradient(135deg, var(--error-color) 0%, #e91e63 100%);
+  color: var(--accent-contrast-text-color);
+  box-shadow: 0 0 15px rgba(255, 87, 87, 0.3), var(--elevation-2);
+}
+
+.nexus-btn-danger:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 0 25px rgba(255, 87, 87, 0.4), var(--elevation-3);
+}
+
+/* Ghost button */
+.nexus-btn-ghost {
+  background: transparent;
+  color: var(--accent-color);
+  border: none;
+}
+
+.nexus-btn-ghost:hover:not(:disabled) {
+  background: var(--glass-bg-secondary);
+}
+
+/* Disabled state */
+.nexus-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Size variants */
+.nexus-btn-sm {
+  padding: 8px 16px;
+  font-size: 0.875rem;
+}
+
+.nexus-btn-lg {
+  padding: 16px 32px;
+  font-size: 1rem;
+}
+
+.nexus-btn-full {
+  width: 100%;
+}
+
+/* ==========================================================================
+   4. NEXUS CARDS
+   ========================================================================== */
+
+.nexus-card {
+  background: var(--glass-bg-primary);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-lg);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--elevation-2);
+  transition: all var(--transition-normal);
+}
+
+.nexus-card:hover {
+  background: var(--glass-bg-secondary);
+  border-color: var(--glass-border-hover);
+}
+
+.nexus-card-elevated:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--elevation-3);
+}
+
+.nexus-card-accent {
+  border-left: 3px solid var(--accent-color);
+  box-shadow: var(--glow-primary), var(--elevation-2);
+}
+
+/* ==========================================================================
+   5. NEXUS INPUTS
+   ========================================================================== */
+
+.nexus-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--glass-bg-primary);
+  border: 2px solid var(--glass-border);
+  border-radius: var(--border-radius);
+  color: var(--main-text-color);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  transition: all var(--transition-fast);
+  backdrop-filter: blur(12px);
+}
+
+.nexus-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1), var(--glow-primary);
+  background: var(--glass-bg-secondary);
+}
+
+.nexus-input::placeholder {
+  color: var(--secondary-text-color);
+  opacity: 0.6;
+}
+
+.nexus-textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.nexus-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: var(--spacing-sm);
+  color: var(--secondary-text-color);
+}
+
+/* ==========================================================================
+   6. NEXUS BADGES
+   ========================================================================== */
+
+.nexus-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: var(--border-radius-full);
+  background: var(--glass-bg-secondary);
+  border: 1px solid var(--glass-border);
+  color: var(--main-text-color);
+}
+
+.nexus-badge-primary {
+  background: var(--accent-color);
+  color: var(--accent-contrast-text-color);
+  border: none;
+  box-shadow: var(--glow-primary);
+}
+
+.nexus-badge-success {
+  background: var(--success-color);
+  color: #000;
+  border: none;
+}
+
+.nexus-badge-danger {
+  background: var(--error-color);
+  color: var(--accent-contrast-text-color);
+  border: none;
+}
+
+/* ==========================================================================
+   7. CHAT SPECIFIC STYLES
+   ========================================================================== */
+
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--main-bg-color);
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--secondary-bg-color);
+  border-bottom: 1px solid var(--glass-border);
+  backdrop-filter: blur(12px);
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.chat-message {
+  max-width: 80%;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: var(--border-radius-lg);
+  animation: messageSlide 0.3s ease-out;
+}
+
+@keyframes messageSlide {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-message-user {
+  align-self: flex-end;
+  background: var(--message-user-bg);
+  color: var(--accent-contrast-text-color);
+  border-bottom-right-radius: 4px;
+}
+
+.chat-message-ai {
+  align-self: flex-start;
+  background: var(--glass-bg-secondary);
+  border: 1px solid var(--glass-border);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-input-container {
+  padding: var(--spacing-lg);
+  background: var(--secondary-bg-color);
+  border-top: 1px solid var(--glass-border);
+}
+
+.chat-input-wrapper {
+  display: flex;
+  gap: var(--spacing-md);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.chat-input {
+  flex: 1;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--glass-bg-primary);
+  border: 2px solid var(--glass-border);
+  border-radius: var(--border-radius-lg);
+  color: var(--main-text-color);
+  font-size: 1rem;
+  font-family: inherit;
+  resize: none;
+  transition: all var(--transition-fast);
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: var(--glow-primary);
+}
+
+.chat-send-btn {
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--color-primary-gradient);
+  color: var(--accent-contrast-text-color);
+  border: none;
+  border-radius: var(--border-radius);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: var(--glow-primary);
+}
+
+.chat-send-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: var(--glow-primary-intense);
+}
+
+.chat-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ==========================================================================
+   8. ELARA AVATAR & BRANDING
+   ========================================================================== */
+
+.elara-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-color), var(--color-secondary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  box-shadow: var(--glow-primary);
+}
+
+.elara-avatar-lg {
+  width: 64px;
+  height: 64px;
+  font-size: 32px;
+}
+
+.elara-status-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--success-color);
+  box-shadow: 0 0 10px var(--success-color);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ==========================================================================
+   9. LOADING & ANIMATIONS
+   ========================================================================== */
+
+.nexus-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--glass-border);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.nexus-typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: var(--spacing-md);
+}
+
+.nexus-typing-indicator span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.nexus-typing-indicator span:nth-child(1) { animation-delay: 0s; }
+.nexus-typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.nexus-typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   10. UTILITY CLASSES
+   ========================================================================== */
+
+.text-primary { color: var(--accent-color); }
+.text-secondary { color: var(--secondary-text-color); }
+.text-success { color: var(--success-color); }
+.text-danger { color: var(--error-color); }
+.text-warning { color: var(--warning-color); }
+
+.bg-glass { background: var(--glass-bg-secondary); }
+.border-glass { border: 1px solid var(--glass-border); }
+
+.glow-primary { box-shadow: var(--glow-primary); }
+.glow-secondary { box-shadow: var(--glow-secondary); }
+
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.gap-sm { gap: var(--spacing-sm); }
+.gap-md { gap: var(--spacing-md); }
+.gap-lg { gap: var(--spacing-lg); }
+
+.p-sm { padding: var(--spacing-sm); }
+.p-md { padding: var(--spacing-md); }
+.p-lg { padding: var(--spacing-lg); }
+
+.mt-md { margin-top: var(--spacing-md); }
+.mt-lg { margin-top: var(--spacing-lg); }
+.mb-md { margin-bottom: var(--spacing-md); }
+.mb-lg { margin-bottom: var(--spacing-lg); }
+
+.rounded { border-radius: var(--border-radius); }
+.rounded-lg { border-radius: var(--border-radius-lg); }
+.rounded-full { border-radius: var(--border-radius-full); }
+
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+
+.text-sm { font-size: 0.875rem; }
+.text-lg { font-size: 1.125rem; }
+.text-xl { font-size: 1.25rem; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

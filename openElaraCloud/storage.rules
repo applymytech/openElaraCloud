@@ -1,0 +1,74 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper: Is user authenticated?
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper: Is this the user's folder?
+    function isUserFolder(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    // Helper: File size limits
+    function isValidSize(maxSizeMB) {
+      return request.resource.size < maxSizeMB * 1024 * 1024;
+    }
+    
+    // Helper: Valid image type
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    // ========================================
+    // USER FILES
+    // ========================================
+    match /users/{userId}/{allPaths=**} {
+      // Users can only access their own files
+      allow read: if isAuthenticated() && isUserFolder(userId);
+      
+      // Write with size limit (50MB per file)
+      allow write: if isAuthenticated() && 
+                      isUserFolder(userId) && 
+                      isValidSize(50);
+    }
+    
+    // ========================================
+    // USER IMAGES (generated)
+    // ========================================
+    match /images/{userId}/{imageId} {
+      allow read: if isAuthenticated() && isUserFolder(userId);
+      allow write: if isAuthenticated() && 
+                      isUserFolder(userId) && 
+                      isValidImage() &&
+                      isValidSize(10); // 10MB limit for images
+    }
+    
+    // ========================================
+    // PROJECT FILES
+    // ========================================
+    match /projects/{userId}/{projectId}/{filePath=**} {
+      allow read: if isAuthenticated() && isUserFolder(userId);
+      allow write: if isAuthenticated() && 
+                      isUserFolder(userId) && 
+                      isValidSize(25); // 25MB per code file
+    }
+    
+    // ========================================
+    // PUBLIC ASSETS (read-only)
+    // ========================================
+    match /public/{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    // ========================================
+    // DENY EVERYTHING ELSE
+    // ========================================
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

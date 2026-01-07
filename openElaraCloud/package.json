@@ -1,0 +1,49 @@
+{
+  "name": "open-elara-cloud",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sovereign Cloud AI Assistant - Deploy on your own Firebase infrastructure",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "deploy": "npm run build && firebase deploy"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "firebase": "^12.7.0",
+    "firebase-admin": "^13.6.0",
+    "highlight.js": "^11.11.1",
+    "marked": "^17.0.1",
+    "next": "^16.1.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/react": "^19.2.7",
+    "eslint": "^9.39.2",
+    "eslint-config-next": "^16.1.1",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/applymytech/openElaraCloud.git"
+  },
+  "author": "ApplyMyTech",
+  "license": "MIT",
+  "keywords": [
+    "ai",
+    "assistant",
+    "firebase",
+    "sovereign",
+    "self-hosted",
+    "chat",
+    "image-generation",
+    "byok"
+  ]
+}
