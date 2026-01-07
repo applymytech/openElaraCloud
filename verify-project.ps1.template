@@ -1,0 +1,57 @@
+# OpenElara Cloud - Project Verification Script Template
+#
+# SETUP INSTRUCTIONS:
+# 1. Copy this file to 'verify-project.ps1'
+# 2. Replace YOUR_PROJECT_ID with your Firebase project ID
+# 3. Run: .\verify-project.ps1
+#
+# This script checks that you're deploying to the correct project.
+
+$REQUIRED_PROJECT = "YOUR_FIREBASE_PROJECT_ID"
+
+Write-Host "=== OpenElara Cloud Project Verification ===" -ForegroundColor Cyan
+
+# Check .firebaserc
+if (Test-Path ".firebaserc") {
+    $firebaserc = Get-Content ".firebaserc" | ConvertFrom-Json
+    $configuredProject = $firebaserc.projects.default
+    
+    if ($configuredProject -eq $REQUIRED_PROJECT) {
+        Write-Host "✓ .firebaserc: $configuredProject" -ForegroundColor Green
+    } else {
+        Write-Host "✗ .firebaserc mismatch!" -ForegroundColor Red
+        Write-Host "  Expected: $REQUIRED_PROJECT" -ForegroundColor Yellow
+        Write-Host "  Got: $configuredProject" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "✗ .firebaserc not found" -ForegroundColor Red
+    Write-Host "  Copy .firebaserc.template to .firebaserc" -ForegroundColor Yellow
+}
+
+# Check .env.local
+if (Test-Path ".env.local") {
+    $envContent = Get-Content ".env.local"
+    $projectLine = $envContent | Where-Object { $_ -match "NEXT_PUBLIC_FIREBASE_PROJECT_ID" }
+    
+    if ($projectLine -match $REQUIRED_PROJECT) {
+        Write-Host "✓ .env.local project ID matches" -ForegroundColor Green
+    } else {
+        Write-Host "⚠ .env.local project ID may not match" -ForegroundColor Yellow
+        Write-Host "  Check NEXT_PUBLIC_FIREBASE_PROJECT_ID" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "✗ .env.local not found" -ForegroundColor Red
+    Write-Host "  Copy .env.local.template to .env.local" -ForegroundColor Yellow
+}
+
+# Check Firebase CLI project
+$currentProject = firebase use 2>&1
+if ($currentProject -match $REQUIRED_PROJECT) {
+    Write-Host "✓ Firebase CLI: $REQUIRED_PROJECT" -ForegroundColor Green
+} else {
+    Write-Host "⚠ Firebase CLI may be on wrong project" -ForegroundColor Yellow
+    Write-Host "  Run: firebase use $REQUIRED_PROJECT" -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "Verification complete." -ForegroundColor Cyan

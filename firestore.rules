@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function: Is user authenticated?
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function: Is this the user's own document?
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    // ========================================
+    // USER PROFILES
+    // ========================================
+    match /users/{userId} {
+      // Users can only read/write their own profile
+      allow read, write: if isAuthenticated() && isOwner(userId);
+      
+      // User's chat history
+      match /chats/{chatId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+        
+        // Messages within a chat
+        match /messages/{messageId} {
+          allow read, write: if isAuthenticated() && isOwner(userId);
+        }
+      }
+      
+      // User's settings
+      match /settings/{settingId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // User's generated images
+      match /images/{imageId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // User's generated videos
+      match /videos/{videoId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // User's file attachments (for chat context)
+      match /attachments/{attachmentId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // User's RAG documents (conversation history, knowledge files)
+      match /rag/{ragId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // User's temporary media storage (images, videos, audio)
+      match /media/{mediaId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // User's custom characters
+      match /characters/{characterId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // User's personas
+      match /personas/{personaId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // Usage tracking
+      match /usage/{usageId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+    }
+    
+    // ========================================
+    // PUBLIC DATA (read-only)
+    // ========================================
+    match /public/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Admin only via admin SDK
+    }
+    
+    // ========================================
+    // DENY EVERYTHING ELSE
+    // ========================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
