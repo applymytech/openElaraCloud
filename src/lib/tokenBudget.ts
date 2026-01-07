@@ -27,7 +27,30 @@ export interface TokenBudgetResult {
   };
 }
 
+/**
+ * Token Management Modes (from desktop app requirements)
+ * 
+ * FULLY_AUTO: 
+ *   - Unrestricted RAG context (fills available space)
+ *   - No hardcoded max_tokens limit
+ *   - Model decides response length naturally
+ *   - Best for: Power users who want maximum context
+ * 
+ * SEMI_AUTO:
+ *   - Only output size slider (user preference)
+ *   - Output preference added to system prompt (not hardcoded max_tokens)
+ *   - RAG context unrestricted
+ *   - Best for: Users who want some control over response length
+ * 
+ * STANDARD:
+ *   - Full token manager with all sliders
+ *   - Knowledge, history, output all controlled
+ *   - Best for: Precise token budget control
+ */
+export type TokenMode = 'fully-auto' | 'semi-auto' | 'standard';
+
 export interface TokenSettings {
+  mode: TokenMode;
   output: number;
   knowledge: number;
   history: number;
@@ -36,9 +59,12 @@ export interface TokenSettings {
   outputPercentage: number | null;
   knowledgePercentage: number | null;
   historyPercentage: number | null;
+  // Semi-auto specific: desired response size (words, not tokens)
+  preferredResponseWords: number | null;
 }
 
 export const DEFAULT_TOKEN_SETTINGS: TokenSettings = {
+  mode: 'fully-auto', // Default to unrestricted mode
   output: 0,
   knowledge: 2048,
   history: 2048,
@@ -49,6 +75,8 @@ export const DEFAULT_TOKEN_SETTINGS: TokenSettings = {
   outputPercentage: 0.25, // 25% of available context for response
   knowledgePercentage: null, // null = use absolute value
   historyPercentage: null,
+  // Semi-auto: user's preferred response length in words
+  preferredResponseWords: null, // null = no preference
 };
 
 const TOKEN_SETTINGS_KEY = 'openelara_token_settings';
@@ -238,15 +266,32 @@ export function getModelContextWindow(modelId: string): number {
  * 
  * IMPORTANT: This replaces hardcoded values like "max_tokens: 2048"
  * Instead, we calculate based on model capabilities and current context usage.
+ * 
+ * Behavior by mode:
+ * - FULLY_AUTO: Returns null (let model decide)
+ * - SEMI_AUTO: Returns null (output preference is in system prompt)
+ * - STANDARD: Returns calculated max_tokens based on settings
  */
 export function calculateMaxTokens(
   modelId: string,
   inputTokens: number = 0,
   settings?: Partial<TokenSettings>
-): number {
+): number | null {
   const contextWindow = getModelContextWindow(modelId);
   const tokenSettings = { ...loadTokenSettings(), ...settings };
   
+  // FULLY_AUTO: Don't restrict output - let model decide naturally
+  if (tokenSettings.mode === 'fully-auto') {
+    return null;
+  }
+  
+  // SEMI_AUTO: Don't use hardcoded max_tokens
+  // Output preference should be added to system prompt instead
+  if (tokenSettings.mode === 'semi-auto') {
+    return null;
+  }
+  
+  // STANDARD: Full token budget calculation
   // Create budget calculator
   const budget = new TokenBudget(
     contextWindow,
@@ -277,6 +322,39 @@ export function calculateMaxTokens(
   
   // Ensure minimum viable output
   return Math.max(256, maxTokens);
+}
+
+/**
+ * Get output preference instruction for system prompt (SEMI_AUTO mode)
+ * 
+ * This is used when mode is 'semi-auto' to suggest response length
+ * without hardcoding max_tokens in the API call.
+ */
+export function getOutputPreferenceInstruction(settings?: Partial<TokenSettings>): string | null {
+  const tokenSettings = { ...loadTokenSettings(), ...settings };
+  
+  // Only applies to semi-auto mode
+  if (tokenSettings.mode !== 'semi-auto') {
+    return null;
+  }
+  
+  // Check if user has a preferred response length
+  if (!tokenSettings.preferredResponseWords) {
+    return null;
+  }
+  
+  const words = tokenSettings.preferredResponseWords;
+  
+  // Create natural language instruction based on word count
+  if (words <= 50) {
+    return `\n\n**User Preference:** Keep your response brief - around ${words} words or less. Be concise.`;
+  } else if (words <= 150) {
+    return `\n\n**User Preference:** Aim for a moderate response length - around ${words} words.`;
+  } else if (words <= 300) {
+    return `\n\n**User Preference:** Provide a detailed response - around ${words} words.`;
+  } else {
+    return `\n\n**User Preference:** Provide a comprehensive, thorough response - around ${words} words or more if needed.`;
+  }
 }
 
 /**

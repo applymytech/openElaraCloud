@@ -323,7 +323,8 @@ export default function CharacterEditor({ onClose, onCharacterSelected }: Charac
             border: 1px solid var(--glass-border);
             border-radius: var(--border-radius-lg);
             padding: var(--spacing-lg);
-            max-width: 600px;
+            width: 100%;
+            max-width: 100%;
             max-height: 90vh;
             overflow-y: auto;
           }
@@ -345,6 +346,10 @@ export default function CharacterEditor({ onClose, onCharacterSelected }: Charac
             color: var(--secondary-text-color);
             font-size: 1.25rem;
             cursor: pointer;
+          }
+          
+          .editor-form {
+            width: 100%;
           }
           
           .form-section {
@@ -372,6 +377,7 @@ export default function CharacterEditor({ onClose, onCharacterSelected }: Charac
           
           .form-group {
             margin-bottom: var(--spacing-md);
+            width: 100%;
           }
           
           .form-group label {
@@ -379,6 +385,15 @@ export default function CharacterEditor({ onClose, onCharacterSelected }: Charac
             font-size: 0.875rem;
             color: var(--secondary-text-color);
             margin-bottom: var(--spacing-xs);
+          }
+          
+          .form-group .nexus-input {
+            width: 100%;
+          }
+          
+          .form-group textarea.nexus-input {
+            width: 100%;
+            resize: vertical;
           }
           
           .editor-actions {
@@ -419,7 +434,7 @@ export default function CharacterEditor({ onClose, onCharacterSelected }: Charac
                   className="card-avatar"
                 />
               ) : (
-                <span className="card-icon">{char.iconEmoji}</span>
+                <div className="card-avatar-placeholder" />
               )}
               <div className="card-info">
                 <div className="card-name">
@@ -465,7 +480,8 @@ export default function CharacterEditor({ onClose, onCharacterSelected }: Charac
           border: 1px solid var(--glass-border);
           border-radius: var(--border-radius-lg);
           padding: var(--spacing-lg);
-          max-width: 500px;
+          width: 100%;
+          max-width: 100%;
           max-height: 80vh;
           overflow-y: auto;
         }
@@ -545,8 +561,13 @@ export default function CharacterEditor({ onClose, onCharacterSelected }: Charac
           box-shadow: var(--glow-primary);
         }
         
-        .card-icon {
-          font-size: 2rem;
+        .card-avatar-placeholder {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          background: var(--glass-bg-secondary);
+          border: 2px solid var(--glass-border);
+          flex-shrink: 0;
         }
         
         .card-info {

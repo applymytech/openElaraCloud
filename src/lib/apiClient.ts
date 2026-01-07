@@ -48,7 +48,7 @@ export interface ToolCall {
 
 export interface ModelConfig {
   modelId: string;
-  provider: 'together' | 'openrouter' | 'openai' | 'custom';
+  provider: 'together' | 'openrouter';
   displayName?: string;
 }
 
@@ -66,6 +66,7 @@ export interface ChatResponse {
   thinking?: string;
   error?: string;
   toolCalls?: ToolCall[];
+  emotionalState?: ExtractedEmotionalState | null; // Extracted emotional state for RAG tracking
   usage?: {
     prompt_tokens: number;
     completion_tokens: number;
@@ -103,11 +104,92 @@ function extractThinkingForModal(content: string | null): string {
   return thinkingMatch ? thinkingMatch[1].trim() : '';
 }
 
+/**
+ * Extract emotional state log from LLM response (for RAG storage, NOT rendering)
+ * Matches patterns like:
+ * - "My current emotional state as Elara: GOOD, ENGAGED 💜"
+ * - "[EMOTIONAL STATE: happy, engaged]"
+ * - "Emotional state: content, curious"
+ */
+export interface ExtractedEmotionalState {
+  rawLog: string;
+  mood?: string;
+  description?: string;
+}
+
+function extractEmotionalState(content: string | null): ExtractedEmotionalState | null {
+  if (!content || typeof content !== 'string') return null;
+  
+  // Pattern 1: "My current emotional state as [Name]: STATE"
+  const pattern1 = /My current emotional state as \w+:\s*([^\n]+)/i;
+  // Pattern 2: "[EMOTIONAL STATE: ...]" or "(EMOTIONAL STATE: ...)"
+  const pattern2 = /[\[\(]EMOTIONAL\s*STATE[:\s]+([^\]\)]+)[\]\)]/i;
+  // Pattern 3: "Emotional state:" at start of line
+  const pattern3 = /^Emotional\s*state[:\s]+([^\n]+)/im;
+  // Pattern 4: Mood level patterns like "Mood level: 75/100"
+  const pattern4 = /Mood\s*level[:\s]+\d+\/\d+[^\n]*/gi;
+  // Pattern 5: Internal system markers
+  const pattern5 = /═+[\s\S]*?EMOTIONAL STATE[\s\S]*?═+/gi;
+  
+  let match = content.match(pattern1) || content.match(pattern2) || content.match(pattern3);
+  
+  if (match) {
+    return {
+      rawLog: match[0],
+      description: match[1]?.trim(),
+    };
+  }
+  
+  // Check for system marker patterns
+  const systemMatch = content.match(pattern5);
+  if (systemMatch) {
+    return {
+      rawLog: systemMatch[0],
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Remove emotional state logs from content before rendering
+ * These are for internal RAG/mood tracking only, not for user display
+ */
+function stripEmotionalStateLogs(content: string | null): string {
+  if (!content || typeof content !== 'string') return content || '';
+  
+  let cleaned = content;
+  
+  // Remove "My current emotional state as [Name]: ..." lines
+  cleaned = cleaned.replace(/My current emotional state as \w+:[^\n]*\n?/gi, '');
+  
+  // Remove "[EMOTIONAL STATE: ...]" or "(EMOTIONAL STATE: ...)"
+  cleaned = cleaned.replace(/[\[\(]EMOTIONAL\s*STATE[:\s]+[^\]\)]+[\]\)]\s*\n?/gi, '');
+  
+  // Remove "Emotional state:" lines
+  cleaned = cleaned.replace(/^Emotional\s*state[:\s]+[^\n]*\n?/gim, '');
+  
+  // Remove "Mood level: X/100" lines
+  cleaned = cleaned.replace(/Mood\s*level[:\s]+\d+\/\d+[^\n]*\n?/gi, '');
+  
+  // Remove system emotional state blocks (the fancy boxed ones)
+  cleaned = cleaned.replace(/═+[\s\S]*?EMOTIONAL STATE[\s\S]*?═+\s*\n?/gi, '');
+  cleaned = cleaned.replace(/─+[\s\S]*?EMOTIONAL STATE[\s\S]*?─+\s*\n?/gi, '');
+  
+  // Remove leading/trailing whitespace and normalize multiple newlines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+  
+  return cleaned;
+}
+
 function extractResponseForChat(content: string | null): string {
   if (!content || typeof content !== 'string') return content || '';
   
   // Remove ALL thinking content FIRST (can appear anywhere)
-  const cleaned = content.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+  let cleaned = content.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+  
+  // Remove emotional state logs (for RAG only, not display)
+  cleaned = stripEmotionalStateLogs(cleaned);
   
   // Check for <response> tags
   const responseMatch = cleaned.match(/<response>([\s\S]*?)<\/response>/i);
@@ -118,10 +200,15 @@ function extractResponseForChat(content: string | null): string {
   return cleaned || content;
 }
 
-function extractAndCleanThought(content: string | null): { cleanedAnswer: string; extractedThinking: string } {
+function extractAndCleanThought(content: string | null): { 
+  cleanedAnswer: string; 
+  extractedThinking: string;
+  emotionalState: ExtractedEmotionalState | null;
+} {
   return {
     cleanedAnswer: extractResponseForChat(content),
     extractedThinking: extractThinkingForModal(content),
+    emotionalState: extractEmotionalState(content),
   };
 }
 
@@ -131,11 +218,28 @@ function extractAndCleanThought(content: string | null): { cleanedAnswer: string
 
 /**
  * Detect provider from model ID or explicit provider setting
+ * 
+ * SUPPORTED PROVIDERS (matching desktop app):
+ * - together: Together.ai - Primary provider for chat, images, video, TTS
+ * - openrouter: OpenRouter - Chat routing to 300+ models (50+ free)
+ * 
+ * Note: OpenAI/Anthropic models are accessed THROUGH OpenRouter, not directly.
+ * This matches the desktop app's architecture.
  */
-export function detectProvider(modelId: string, explicitProvider?: string): 'together' | 'openrouter' | 'openai' | 'custom' {
+export function detectProvider(modelId: string, explicitProvider?: string): 'together' | 'openrouter' {
   const normalized = (explicitProvider || modelId).toLowerCase();
   
-  // Together.ai models
+  // OpenRouter - explicit or models accessed via router
+  if (normalized.includes('openrouter') || 
+      normalized.includes('open router') ||
+      modelId.startsWith('openai/') ||       // OpenAI via OpenRouter
+      modelId.startsWith('anthropic/') ||    // Anthropic via OpenRouter
+      modelId.startsWith('google/gemini')) { // Gemini via OpenRouter
+    return 'openrouter';
+  }
+  
+  // Together.ai models - the primary provider
+  // Includes: Llama, DeepSeek, Qwen, Mistral, FLUX, etc.
   if (normalized.includes('together') ||
       modelId.startsWith('meta-llama/') ||
       modelId.startsWith('mistralai/') ||
@@ -144,26 +248,14 @@ export function detectProvider(modelId: string, explicitProvider?: string): 'tog
       modelId.startsWith('google/') ||
       modelId.startsWith('black-forest-labs/') ||
       modelId.includes('Llama') ||
-      modelId.includes('Mixtral')) {
+      modelId.includes('Mixtral') ||
+      modelId.includes('-Free') || 
+      modelId.includes('Turbo-Free')) {
     return 'together';
   }
   
-  // OpenRouter
-  if (normalized.includes('openrouter') || normalized.includes('open router')) {
-    return 'openrouter';
-  }
-  
-  // OpenAI
-  if (normalized.includes('openai') || modelId.startsWith('gpt-')) {
-    return 'openai';
-  }
-  
-  // Default to together for known free models
-  if (modelId.includes('-Free') || modelId.includes('Turbo-Free')) {
-    return 'together';
-  }
-  
-  return 'together'; // Default
+  // Default to together (the primary provider)
+  return 'together';
 }
 
 // ============================================================================
@@ -175,7 +267,7 @@ async function chatWithTogether(
   payload: ChatPayload
 ): Promise<ChatResponse> {
   try {
-    // Calculate max_tokens dynamically based on model context window
+    // Calculate max_tokens dynamically based on model context window and token mode
     const inputTokens = estimateTokens(JSON.stringify(payload.messages));
     const maxTokens = payload.maxTokens ?? calculateMaxTokens(payload.modelConfig.modelId, inputTokens);
     
@@ -183,10 +275,15 @@ async function chatWithTogether(
       model: payload.modelConfig.modelId,
       messages: payload.messages,
       temperature: payload.temperature ?? 0.7,
-      max_tokens: maxTokens,
     };
     
-    console.log(`[Together] Sending request to model: ${payload.modelConfig.modelId} (max_tokens: ${maxTokens})`);
+    // Only set max_tokens if explicitly provided or in standard mode
+    // FULLY_AUTO and SEMI_AUTO modes return null - let model decide
+    if (maxTokens !== null) {
+      requestBody.max_tokens = maxTokens;
+    }
+    
+    console.log(`[Together] Sending request to model: ${payload.modelConfig.modelId} (max_tokens: ${maxTokens ?? 'unrestricted'})`);
     
     const response = await fetch('https://api.together.xyz/v1/chat/completions', {
       method: 'POST',
@@ -228,12 +325,13 @@ async function chatWithTogether(
     const choice = data.choices?.[0];
     const rawContent = choice?.message?.content;
     
-    const { cleanedAnswer, extractedThinking } = extractAndCleanThought(rawContent);
+    const { cleanedAnswer, extractedThinking, emotionalState } = extractAndCleanThought(rawContent);
     
     return {
       success: true,
       answer: cleanedAnswer,
       thinking: extractedThinking,
+      emotionalState,
       usage: data.usage,
     };
   } catch (error: any) {
@@ -251,7 +349,7 @@ async function chatWithOpenRouter(
   payload: ChatPayload
 ): Promise<ChatResponse> {
   try {
-    // Calculate max_tokens dynamically based on model context window
+    // Calculate max_tokens dynamically based on model context window and token mode
     const inputTokens = estimateTokens(JSON.stringify(payload.messages));
     const maxTokens = payload.maxTokens ?? calculateMaxTokens(payload.modelConfig.modelId, inputTokens);
     
@@ -259,10 +357,15 @@ async function chatWithOpenRouter(
       model: payload.modelConfig.modelId,
       messages: payload.messages,
       temperature: payload.temperature ?? 0.7,
-      max_tokens: maxTokens,
     };
     
-    console.log(`[OpenRouter] Sending request to model: ${payload.modelConfig.modelId} (max_tokens: ${maxTokens})`);
+    // Only set max_tokens if explicitly provided or in standard mode
+    // FULLY_AUTO and SEMI_AUTO modes return null - let model decide
+    if (maxTokens !== null) {
+      requestBody.max_tokens = maxTokens;
+    }
+    
+    console.log(`[OpenRouter] Sending request to model: ${payload.modelConfig.modelId} (max_tokens: ${maxTokens ?? 'unrestricted'})`);
     
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -294,12 +397,13 @@ async function chatWithOpenRouter(
     const choice = data.choices?.[0];
     const rawContent = choice?.message?.content;
     
-    const { cleanedAnswer, extractedThinking } = extractAndCleanThought(rawContent);
+    const { cleanedAnswer, extractedThinking, emotionalState } = extractAndCleanThought(rawContent);
     
     return {
       success: true,
       answer: cleanedAnswer,
       thinking: extractedThinking,
+      emotionalState,
       usage: data.usage,
     };
   } catch (error: any) {
@@ -319,7 +423,7 @@ async function chatWithOpenAIStyle(
   extraHeaders?: Record<string, string>
 ): Promise<ChatResponse> {
   try {
-    // Calculate max_tokens dynamically based on model context window
+    // Calculate max_tokens dynamically based on model context window and token mode
     const inputTokens = estimateTokens(JSON.stringify(payload.messages));
     const maxTokens = payload.maxTokens ?? calculateMaxTokens(payload.modelConfig.modelId, inputTokens);
     
@@ -327,10 +431,15 @@ async function chatWithOpenAIStyle(
       model: payload.modelConfig.modelId,
       messages: payload.messages,
       temperature: payload.temperature ?? 0.7,
-      max_tokens: maxTokens,
     };
     
-    console.log(`[OpenAI-Style] Sending request to ${endpoint} model: ${payload.modelConfig.modelId} (max_tokens: ${maxTokens})`);
+    // Only set max_tokens if explicitly provided or in standard mode
+    // FULLY_AUTO and SEMI_AUTO modes return null - let model decide
+    if (maxTokens !== null) {
+      requestBody.max_tokens = maxTokens;
+    }
+    
+    console.log(`[OpenAI-Style] Sending request to ${endpoint} model: ${payload.modelConfig.modelId} (max_tokens: ${maxTokens ?? 'unrestricted'})`);
     
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -364,12 +473,13 @@ async function chatWithOpenAIStyle(
     const choice = data.choices?.[0];
     const rawContent = choice?.message?.content;
     
-    const { cleanedAnswer, extractedThinking } = extractAndCleanThought(rawContent);
+    const { cleanedAnswer, extractedThinking, emotionalState } = extractAndCleanThought(rawContent);
     
     return {
       success: true,
       answer: cleanedAnswer,
       thinking: extractedThinking,
+      emotionalState,
       usage: data.usage,
     };
   } catch (error: any) {
@@ -410,14 +520,6 @@ export async function routeChat(payload: ChatPayload): Promise<ChatResponse> {
         return { success: false, error: 'OpenRouter API key not configured. Add it in Settings.' };
       }
       return chatWithOpenRouter(apiKey, payload);
-    }
-    
-    case 'openai': {
-      const apiKey = getAPIKey('openai');
-      if (!apiKey) {
-        return { success: false, error: 'OpenAI API key not configured. Add it in Settings.' };
-      }
-      return chatWithOpenAIStyle(apiKey, 'https://api.openai.com/v1/chat/completions', payload);
     }
     
     default: {

@@ -1,15 +1,22 @@
 /**
- * Video Generation Panel Component - AGENTIC WORKFLOW + CLOUD STORAGE
+ * Video Generation Panel Component - AGENTIC vs CUSTOM
  * 
- * PORTED FROM DESKTOP: The AI decides the scene based on mood/context
- * STORAGE: Auto-stores to Firebase Storage with download-and-clear workflow
+ * IMPORTANT: Both modes use the SAME video generation endpoint/handler.
+ * The difference is ONLY in how the prompt is constructed:
  * 
- * Flow:
+ * SELFIE MODE (Agentic):
  * 1. User provides optional scene suggestion
- * 2. LLM (with character persona + mood) DECIDES the actual scene/camera work
- * 3. AI's scene description goes to video generation model
- * 4. Result auto-stored to cloud
- * 5. User downloads to local → clears cloud space
+ * 2. LLM (with character persona + mood) DECIDES actual scene/camera work contextually
+ * 3. AI's contextual scene description goes to generateVideo()
+ * 4. Result is character-authentic with cinematography (NOT literally a "selfie" video!)
+ * 
+ * CUSTOM MODE:
+ * 1. User provides explicit prompt
+ * 2. Goes directly to generateVideo() with user's exact prompt
+ * 
+ * Both modes → generateVideo() → Together.ai /v1/video/generations endpoint
+ * STORAGE: Auto-stores to Firebase Storage with download-and-clear workflow
+ * User downloads to local → clears cloud space
  */
 
 import { useState } from 'react';
@@ -76,6 +83,12 @@ export default function VideoGenPanel({ onClose, onVideoGenerated, conversationC
           moodState,
           conversationContext,
           duration,
+          onProgress: (status, attempt) => {
+            const statusText = status === 'queued' ? 'Queued for generation...' : 
+                             status === 'in_progress' ? `Generating video... (${Math.floor(attempt * 5 / 60)}m ${(attempt * 5) % 60}s)` :
+                             status;
+            setGenerationPhase(statusText);
+          },
         });
         
         setAiDecision(agenticResult.aiSceneDecision);
@@ -88,6 +101,12 @@ export default function VideoGenPanel({ onClose, onVideoGenerated, conversationC
           prompt, 
           model,
           duration,
+          onProgress: (status, attempt) => {
+            const statusText = status === 'queued' ? 'Queued...' : 
+                             status === 'in_progress' ? `Generating... (${Math.floor(attempt * 5 / 60)}m ${(attempt * 5) % 60}s)` :
+                             status;
+            setGenerationPhase(statusText);
+          },
         });
       }
       

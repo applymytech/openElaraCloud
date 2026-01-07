@@ -23,9 +23,6 @@ const KEY_PREFIX = 'elara_apikey_';
 export interface APIKeys {
   together?: string;
   openrouter?: string;
-  elevenlabs?: string;
-  openai?: string;
-  anthropic?: string;
   exa?: string;
 }
 
@@ -70,7 +67,7 @@ export function getAllAPIKeys(): APIKeys {
   if (typeof window === 'undefined') return {};
   
   const keys: APIKeys = {};
-  const providers: APIKeyProvider[] = ['together', 'openrouter', 'elevenlabs', 'openai', 'anthropic', 'exa'];
+  const providers: APIKeyProvider[] = ['together', 'openrouter', 'exa'];
   
   for (const provider of providers) {
     const key = getAPIKey(provider);
@@ -87,8 +84,8 @@ export function getAllAPIKeys(): APIKeys {
  */
 export function hasOwnKeys(): boolean {
   const keys = getAllAPIKeys();
-  // Together.ai is the primary provider - check it first
-  return !!(keys.together || keys.openrouter || keys.openai || keys.anthropic);
+  // Together.ai is the primary provider, OpenRouter for chat routing
+  return !!(keys.together || keys.openrouter);
 }
 
 /**
@@ -111,7 +108,7 @@ export function hasChatKey(): boolean {
 export function clearAllKeys(): void {
   if (typeof window === 'undefined') return;
   
-  const providers: APIKeyProvider[] = ['together', 'openrouter', 'elevenlabs', 'openai', 'anthropic', 'exa'];
+  const providers: APIKeyProvider[] = ['together', 'openrouter', 'exa'];
   for (const provider of providers) {
     removeAPIKey(provider);
   }

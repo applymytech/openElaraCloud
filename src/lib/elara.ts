@@ -5,7 +5,7 @@
  * in your growth. She adapts her personality based on emotional context while
  * maintaining her core traits of curiosity, supportiveness, and empowerment.
  * 
- * Cloud Version: Sanitized for general audiences (no NSFW content)
+ * Cloud Version: Safe for work content only
  */
 
 export const ELARA = {

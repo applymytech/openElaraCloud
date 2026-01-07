@@ -52,14 +52,17 @@ export interface ContextCanvasState {
 // CONSTANTS
 // ============================================================================
 
-// Max file size: 100KB (to keep context manageable)
-const MAX_FILE_SIZE = 100 * 1024;
+// Max file size: 500KB (increased for full document support)
+const MAX_FILE_SIZE = 500 * 1024;
 
-// Max total canvas size: 500KB
-const MAX_CANVAS_SIZE = 500 * 1024;
+// Max total canvas size: 2MB (for 75% of typical large context windows)
+const MAX_CANVAS_SIZE = 2 * 1024 * 1024;
 
 // Max files in canvas
-const MAX_FILES = 10;
+const MAX_FILES = 20;
+
+// Max token budget (75% of context window - configurable per model)
+const DEFAULT_MAX_TOKENS = 100000; // ~75% of 128k context window
 
 // Supported file types
 const SUPPORTED_EXTENSIONS = [
@@ -458,6 +461,134 @@ function estimateTokens(text: string): number {
 }
 
 // ============================================================================
+// ENHANCED CONTEXT BUILDING (Zero Truncation with Token Tracking)
+// ============================================================================
+
+/**
+ * Build context canvas content with zero truncation
+ * Returns full content with clear separation for LLM
+ * 
+ * @param maxTokenBudget Maximum tokens to use (default: 75% of typical context)
+ * @returns Object with content string and token stats
+ */
+export function buildFullCanvasContext(maxTokenBudget: number = DEFAULT_MAX_TOKENS): {
+  content: string;
+  tokenCount: number;
+  fileCount: number;
+  exceededBudget: boolean;
+  includedFiles: string[];
+  excludedFiles: string[];
+} {
+  if (canvasState.files.size === 0) {
+    return {
+      content: '',
+      tokenCount: 0,
+      fileCount: 0,
+      exceededBudget: false,
+      includedFiles: [],
+      excludedFiles: [],
+    };
+  }
+  
+  const includedFiles: string[] = [];
+  const excludedFiles: string[] = [];
+  let totalTokens = 0;
+  let content = '';
+  
+  // Sort files by updatedAt (most recently updated first - user likely working on these)
+  const sortedFiles = Array.from(canvasState.files.entries())
+    .sort(([, a], [, b]) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  
+  // Build header
+  content += '╔══════════════════════════════════════════════════════════════════════════════╗\n';
+  content += '║                         CONTEXT CANVAS - LIVE DOCUMENTS                       ║\n';
+  content += '║  These files are pinned by the user for continuous reference.                 ║\n';
+  content += '║  Read them carefully - they contain important context for the conversation.   ║\n';
+  content += '╚══════════════════════════════════════════════════════════════════════════════╝\n\n';
+  
+  const headerTokens = estimateTokens(content);
+  totalTokens += headerTokens;
+  
+  // Add files until we hit the budget
+  for (const [filename, file] of sortedFiles) {
+    const fileTokens = estimateTokens(file.content);
+    const fileHeader = `\n┌──────────────────────────────────────────────────────────────\n│ 📄 ${filename}\n│ Language: ${file.metadata?.language || 'text'} | Lines: ${file.metadata?.lineCount || '?'} | Last Modified: ${file.updatedAt.toLocaleString()}\n└──────────────────────────────────────────────────────────────\n`;
+    const fileFooter = `\n──────────────────────────── END OF ${filename} ────────────────────────────\n`;
+    
+    const wrapperTokens = estimateTokens(fileHeader + fileFooter);
+    const totalFileTokens = fileTokens + wrapperTokens;
+    
+    if (totalTokens + totalFileTokens > maxTokenBudget) {
+      excludedFiles.push(filename);
+      continue;
+    }
+    
+    content += fileHeader;
+    content += file.content;
+    content += fileFooter;
+    
+    totalTokens += totalFileTokens;
+    includedFiles.push(filename);
+  }
+  
+  // Add footer with stats
+  const footer = `\n╔══════════════════════════════════════════════════════════════════════════════╗\n║  Context Canvas: ${includedFiles.length} files loaded | ~${totalTokens.toLocaleString()} tokens used                   ║\n╚══════════════════════════════════════════════════════════════════════════════╝\n\n`;
+  content += footer;
+  totalTokens += estimateTokens(footer);
+  
+  return {
+    content,
+    tokenCount: totalTokens,
+    fileCount: includedFiles.length,
+    exceededBudget: excludedFiles.length > 0,
+    includedFiles,
+    excludedFiles,
+  };
+}
+
+/**
+ * Check if any files have been modified since last check
+ * Uses file metadata (updatedAt) to detect changes
+ */
+export function checkForChanges(lastCheckTimestamp: Date): {
+  hasChanges: boolean;
+  changedFiles: string[];
+} {
+  const changedFiles: string[] = [];
+  
+  for (const [filename, file] of Array.from(canvasState.files.entries())) {
+    if (file.updatedAt > lastCheckTimestamp) {
+      changedFiles.push(filename);
+    }
+  }
+  
+  return {
+    hasChanges: changedFiles.length > 0,
+    changedFiles,
+  };
+}
+
+/**
+ * Get token usage statistics for UI display
+ */
+export function getTokenStats(maxTokenBudget: number = DEFAULT_MAX_TOKENS): {
+  usedTokens: number;
+  maxTokens: number;
+  usagePercent: number;
+  remainingTokens: number;
+} {
+  const usedTokens = canvasState.totalTokens;
+  const usagePercent = Math.round((usedTokens / maxTokenBudget) * 100);
+  
+  return {
+    usedTokens,
+    maxTokens: maxTokenBudget,
+    usagePercent: Math.min(usagePercent, 100),
+    remainingTokens: Math.max(0, maxTokenBudget - usedTokens),
+  };
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -465,5 +596,6 @@ export {
   MAX_FILE_SIZE,
   MAX_CANVAS_SIZE,
   MAX_FILES,
+  DEFAULT_MAX_TOKENS,
   SUPPORTED_EXTENSIONS,
 };

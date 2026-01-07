@@ -8,7 +8,6 @@
  * - Character cards with actual profile images
  * - Role badges (Default, Business, Tactical, Philosophical)
  * - Active character indicator
- * - Image fallback to emoji
  */
 
 import { Character, ELARA, AERON, AELIRA, ANDROS, getActiveCharacter, setActiveCharacter } from '@/lib/characters';
@@ -26,35 +25,30 @@ const BUILT_IN_CHARACTERS = [
     character: ELARA, 
     role: 'Creative Partner', 
     badge: 'Default', 
-    badgeClass: 'default',
-    fallbackEmoji: '👩‍🎨'
+    badgeClass: 'default'
   },
   { 
     character: ANDROS, 
     role: 'Business Pro', 
     badge: '⭐ Business', 
-    badgeClass: 'business',
-    fallbackEmoji: '👨‍💼'
+    badgeClass: 'business'
   },
   { 
     character: AERON, 
     role: 'Tactical Mind', 
     badge: 'Strategy', 
-    badgeClass: 'tactical',
-    fallbackEmoji: '⚔️'
+    badgeClass: 'tactical'
   },
   { 
     character: AELIRA, 
     role: 'Wisdom Keeper', 
     badge: 'Philosophy', 
-    badgeClass: 'philosophical',
-    fallbackEmoji: '🔮'
+    badgeClass: 'philosophical'
   },
 ];
 
 export default function PersonaPanel({ isOpen, onClose, onCharacterSelected }: PersonaPanelProps) {
   const [activeCharacter, setActive] = useState<Character | null>(null);
-  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setActive(getActiveCharacter());
@@ -65,10 +59,6 @@ export default function PersonaPanel({ isOpen, onClose, onCharacterSelected }: P
     setActive(character);
     onCharacterSelected(character);
     onClose();
-  };
-
-  const handleImageError = (charId: string) => {
-    setImageErrors(prev => new Set(prev).add(charId));
   };
 
   return (
@@ -95,7 +85,7 @@ export default function PersonaPanel({ isOpen, onClose, onCharacterSelected }: P
 
         <div className="persona-panel-content">
           <div className="persona-grid">
-            {BUILT_IN_CHARACTERS.map(({ character, role, badge, badgeClass, fallbackEmoji }) => (
+            {BUILT_IN_CHARACTERS.map(({ character, role, badge, badgeClass }) => (
               <div
                 key={character.id}
                 className={`persona-card ${activeCharacter?.id === character.id ? 'active' : ''}`}
@@ -103,15 +93,10 @@ export default function PersonaPanel({ isOpen, onClose, onCharacterSelected }: P
                 title={`Switch to ${character.name}`}
               >
                 <div className="persona-avatar">
-                  {character.iconPath && !imageErrors.has(character.id) ? (
-                    <img
-                      src={character.iconPath}
-                      alt={character.name}
-                      onError={() => handleImageError(character.id)}
-                    />
-                  ) : (
-                    <span className="persona-avatar-fallback">{fallbackEmoji}</span>
-                  )}
+                  <img
+                    src={character.iconPath}
+                    alt={character.name}
+                  />
                 </div>
                 <div className="persona-info">
                   <span className="persona-name">{character.name}</span>
@@ -273,10 +258,6 @@ export default function PersonaPanel({ isOpen, onClose, onCharacterSelected }: P
           width: 100%;
           height: 100%;
           object-fit: cover;
-        }
-
-        .persona-avatar-fallback {
-          font-size: 24px;
         }
 
         .persona-info {

@@ -28,10 +28,17 @@ functions/lib/
 # Firebase project config (has project ID - use .firebaserc.template)
 .firebaserc
 
+# Firestore rules (working version - use .template)
+firestore.rules
+storage.rules
+
 # Local deploy scripts (use *.template files to create your own)
 deploy.ps1
 deploy.sh
 verify-project.ps1
+
+# Deploy safety docs (user-specific - use templates)
+DEPLOY_SAFETY.md
 
 # Debug
 npm-debug.log*

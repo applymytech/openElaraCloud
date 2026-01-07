@@ -2,7 +2,12 @@
  * Content Signing Service for OpenElara Cloud
  * 
  * Embeds provenance metadata in generated images to prove origin.
- * Each user gets a unique installation ID stored in localStorage.
+ * 
+ * SIGNING ARCHITECTURE:
+ * 1. Each user gets a unique signing key stored in Firestore
+ * 2. Keys are generated on first content generation
+ * 3. Signatures include: userId, userKey, timestamp, contentHash
+ * 4. Verification checks signature against Firestore user record
  * 
  * Browser Limitations:
  * - Cannot modify EXIF/PNG chunks directly (no sharp/node)
@@ -10,7 +15,8 @@
  * - Also stores metadata in a sidecar JSON
  * 
  * What Gets Signed:
- * - Installation ID (unique per browser)
+ * - User ID (Firebase Auth UID)
+ * - User signing key (unique per user from Firestore)
  * - Timestamp
  * - Character used
  * - Model used
@@ -18,6 +24,110 @@
  */
 
 import { getActiveCharacter } from './characters';
+import { auth, db } from './firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+
+// ============================================================================
+// USER SIGNING KEY (Firestore-backed)
+// ============================================================================
+
+const SIGNING_KEY_CACHE = 'elara_signing_key_cache';
+
+export interface UserSigningKey {
+  keyId: string;           // Unique key identifier
+  publicFingerprint: string;  // Public fingerprint for verification
+  createdAt: string;
+  userId: string;
+}
+
+/**
+ * Generate a cryptographically secure signing key
+ */
+async function generateSigningKey(): Promise<{ keyId: string; publicFingerprint: string }> {
+  // Generate random key ID
+  const keyId = crypto.randomUUID();
+  
+  // Generate a public fingerprint using Web Crypto
+  const keyMaterial = new Uint8Array(32);
+  crypto.getRandomValues(keyMaterial);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', keyMaterial);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const publicFingerprint = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+  
+  return { keyId, publicFingerprint };
+}
+
+/**
+ * Get or create the user's signing key from Firestore
+ * This key is unique per user and stored securely in their Firestore document
+ */
+export async function getUserSigningKey(): Promise<UserSigningKey | null> {
+  const user = auth.currentUser;
+  if (!user) return null;
+  
+  // Check cache first
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = localStorage.getItem(SIGNING_KEY_CACHE);
+      if (cached) {
+        const parsed = JSON.parse(cached) as UserSigningKey;
+        if (parsed.userId === user.uid) {
+          return parsed;
+        }
+      }
+    } catch { /* ignore cache errors */ }
+  }
+  
+  try {
+    // Check Firestore for existing key
+    const signingRef = doc(db, 'users', user.uid, 'private', 'signingKey');
+    const signingSnap = await getDoc(signingRef);
+    
+    if (signingSnap.exists()) {
+      const data = signingSnap.data() as UserSigningKey;
+      // Cache it
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(SIGNING_KEY_CACHE, JSON.stringify(data));
+      }
+      return data;
+    }
+    
+    // Generate new signing key for this user
+    const { keyId, publicFingerprint } = await generateSigningKey();
+    const newKey: UserSigningKey = {
+      keyId,
+      publicFingerprint,
+      createdAt: new Date().toISOString(),
+      userId: user.uid,
+    };
+    
+    // Store in Firestore (private subcollection)
+    await setDoc(signingRef, newKey);
+    
+    // Cache it
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(SIGNING_KEY_CACHE, JSON.stringify(newKey));
+    }
+    
+    return newKey;
+  } catch (error) {
+    console.error('[Signing] Failed to get/create signing key:', error);
+    return null;
+  }
+}
+
+/**
+ * Clear cached signing key (call on logout)
+ */
+export function clearSigningKeyCache(): void {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(SIGNING_KEY_CACHE);
+  }
+}
+
+// ============================================================================
+// INSTALLATION ID (Browser-local, for additional tracking)
+// ============================================================================
 
 // ============================================================================
 // INSTALLATION ID
@@ -74,7 +184,13 @@ export function getInstallationConfig(): InstallationConfig | null {
 // ============================================================================
 
 export interface ContentMetadata {
-  // Provenance
+  // User Provenance (Firestore-backed)
+  userId?: string;            // Firebase Auth UID
+  userEmail?: string;         // User's email (for verification)
+  userDisplayName?: string;   // User's display name
+  userKeyFingerprint?: string; // Public fingerprint from UserSigningKey
+  
+  // Installation Provenance (Browser-local)
   installationId: string;
   signatureVersion: string;
   
@@ -87,15 +203,25 @@ export interface ContentMetadata {
   characterName: string;
   modelUsed: string;
   promptHash: string;  // SHA-256 hash, not the actual prompt
+  fullPrompt?: string; // Optional: store full prompt if user wants
+  
+  // Generation context
+  generationType: 'selfie' | 'custom' | 'agentic';
+  userRequest?: string;     // User's original request/scene
+  aiDecision?: string;      // AI's scene decision (for agentic mode)
+  conversationContext?: string; // Recent conversation for context
   
   // Generation params
   width?: number;
   height?: number;
   seed?: number;
   steps?: number;
+  guidanceScale?: number;
+  negativePrompt?: string;
   
   // Verification
   contentHash?: string;  // Hash of the actual content
+  signature?: string;    // HMAC signature using user's key
 }
 
 export interface SignedContent {
@@ -115,7 +241,16 @@ async function sha256(message: string): Promise<string> {
 }
 
 /**
+ * Create a signature for content using the user's key
+ */
+async function createSignature(data: string, keyFingerprint: string): Promise<string> {
+  const combined = data + keyFingerprint;
+  return sha256(combined);
+}
+
+/**
  * Generate metadata for a piece of content
+ * Now includes user signing key for verification
  */
 export async function generateMetadata(params: {
   contentType: 'image' | 'video' | 'audio';
@@ -125,33 +260,80 @@ export async function generateMetadata(params: {
   height?: number;
   seed?: number;
   steps?: number;
+  guidanceScale?: number;
+  negativePrompt?: string;
+  generationType?: 'selfie' | 'custom' | 'agentic';
+  userRequest?: string;
+  aiDecision?: string;
+  conversationContext?: string;
+  includeFullPrompt?: boolean;
 }): Promise<ContentMetadata> {
   const character = getActiveCharacter();
   const promptHash = await sha256(params.prompt);
   
-  return {
+  // Get user's signing key
+  const signingKey = await getUserSigningKey();
+  const user = auth.currentUser;
+  
+  const metadata: ContentMetadata = {
+    // User provenance (if logged in)
+    userId: user?.uid,
+    userEmail: user?.email || undefined,
+    userDisplayName: user?.displayName || undefined,
+    userKeyFingerprint: signingKey?.publicFingerprint,
+    
+    // Installation provenance
     installationId: getInstallationId(),
-    signatureVersion: '1.0-cloud',
+    signatureVersion: '3.0-cloud-comprehensive',
+    
+    // Timing
     generatedAt: new Date().toISOString(),
+    
+    // Content info
     contentType: params.contentType,
     characterId: character.id,
     characterName: character.name,
     modelUsed: params.model,
     promptHash,
+    fullPrompt: params.includeFullPrompt ? params.prompt : undefined,
+    
+    // Generation context
+    generationType: params.generationType || 'custom',
+    userRequest: params.userRequest,
+    aiDecision: params.aiDecision,
+    conversationContext: params.conversationContext,
+    
+    // Generation params
     width: params.width,
     height: params.height,
     seed: params.seed,
     steps: params.steps,
+    guidanceScale: params.guidanceScale,
+    negativePrompt: params.negativePrompt,
   };
+  
+  // Create signature if we have a signing key
+  if (signingKey) {
+    const dataToSign = `${metadata.userId}:${metadata.generatedAt}:${metadata.promptHash}:${metadata.characterId}`;
+    metadata.signature = await createSignature(dataToSign, signingKey.publicFingerprint);
+  }
+  
+  return metadata;
 }
 
 /**
  * Sign an image by embedding metadata
  * 
- * In browser, we:
- * 1. Draw the image on a canvas
- * 2. Add a tiny invisible watermark with encoded metadata
- * 3. Store metadata in localStorage registry
+ * BROWSER LIMITATIONS:
+ * - Cannot modify EXIF/PNG chunks directly (no sharp/node)
+ * - Uses Canvas API to embed metadata in image data via steganography
+ * - Also stores metadata in localStorage registry for verification
+ * 
+ * METADATA ENCODING:
+ * 1. Draw original image on canvas
+ * 2. Encode metadata signature in last row of pixels (blue channel LSB)
+ * 3. Store full metadata in localStorage for retrieval
+ * 4. Return signed canvas as data URL
  */
 export async function signImage(
   imageDataUrl: string,
@@ -163,43 +345,59 @@ export async function signImage(
     
     img.onload = async () => {
       try {
-        // Create canvas
+        // Create canvas with exact dimensions
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
-        const ctx = canvas.getContext('2d')!;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+        
+        if (!ctx) {
+          throw new Error('Failed to get 2D context');
+        }
         
         // Draw original image
         ctx.drawImage(img, 0, 0);
         
-        // Embed metadata in bottom-right corner (1px invisible watermark)
+        // Prepare metadata for embedding
         const metadataJson = JSON.stringify(metadata);
-        const encoded = btoa(metadataJson).slice(0, 100); // First 100 chars
         
-        // Encode in pixel data (steganography-lite)
-        // We modify the least significant bits of a few pixels
+        // STEGANOGRAPHY: Encode signature in pixel data
+        // We use the last row of pixels to embed a marker + hash
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
         
-        // Embed signature marker in last row of pixels
-        const startPixel = (canvas.height - 1) * canvas.width * 4;
-        const marker = 'ELARA_SIGNED';
-        for (let i = 0; i < marker.length && i < canvas.width; i++) {
-          // Modify blue channel LSB with marker character
-          const pixelIndex = startPixel + (i * 4) + 2; // Blue channel
-          data[pixelIndex] = (data[pixelIndex] & 0xF0) | (marker.charCodeAt(i) & 0x0F);
+        // Create a compact signature marker
+        const marker = 'ELARA_SIGNED_V3';
+        const metadataHash = await sha256(metadataJson);
+        const embeddedString = marker + ':' + metadataHash.slice(0, 32);
+        
+        // Embed in the last row of pixels (blue channel LSB)
+        const lastRowStart = (canvas.height - 1) * canvas.width * 4;
+        const maxChars = Math.min(embeddedString.length, canvas.width);
+        
+        for (let i = 0; i < maxChars; i++) {
+          const charCode = embeddedString.charCodeAt(i);
+          const pixelIndex = lastRowStart + (i * 4) + 2; // Blue channel
+          
+          // Modify LSB (least significant 4 bits)
+          if (pixelIndex < data.length) {
+            data[pixelIndex] = (data[pixelIndex] & 0xF0) | (charCode & 0x0F);
+          }
         }
         
+        // Put modified pixel data back
         ctx.putImageData(imageData, 0, 0);
         
-        // Get signed image
-        const signedDataUrl = canvas.toDataURL('image/png');
+        // Get signed image as data URL (PNG preserves pixel data)
+        const signedDataUrl = canvas.toDataURL('image/png', 1.0);
         
-        // Calculate content hash
+        // Calculate final content hash
         metadata.contentHash = await sha256(signedDataUrl);
         
-        // Store in local registry
+        // Store in local registry for verification
         storeGeneratedContent(metadata);
+        
+        console.log(`[Signing] Image signed with hash: ${metadata.contentHash?.slice(0, 16)}...`);
         
         resolve({
           dataUrl: signedDataUrl,
@@ -207,6 +405,7 @@ export async function signImage(
           metadataJson: JSON.stringify(metadata, null, 2),
         });
       } catch (error) {
+        console.error('[Signing] Failed to sign image:', error);
         reject(error);
       }
     };

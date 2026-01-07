@@ -49,7 +49,7 @@ export default function Account() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   
   // API Keys state
-  const [apiKeys, setApiKeys] = useState<APIKeys>({ together: '', openai: '', anthropic: '', openrouter: '', exa: '' });
+  const [apiKeys, setApiKeys] = useState<APIKeys>({ together: '', openrouter: '', exa: '' });
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [keysSaved, setKeysSaved] = useState(false);
   
@@ -72,6 +72,11 @@ export default function Account() {
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
+  
+  // Display name editing state
+  const [editingDisplayName, setEditingDisplayName] = useState(false);
+  const [newDisplayName, setNewDisplayName] = useState('');
+  const [savingDisplayName, setSavingDisplayName] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -131,7 +136,7 @@ export default function Account() {
   const handleClearKeys = () => {
     if (confirm('Are you sure you want to clear all API keys?')) {
       clearAllKeys();
-      setApiKeys({ together: '', openai: '', anthropic: '', openrouter: '', exa: '' });
+      setApiKeys({ together: '', openrouter: '', exa: '' });
     }
   };
 
@@ -194,6 +199,28 @@ export default function Account() {
       }
     } finally {
       setChangingPassword(false);
+    }
+  };
+
+  const handleSaveDisplayName = async () => {
+    if (!user || !newDisplayName.trim()) return;
+    
+    setSavingDisplayName(true);
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        displayName: newDisplayName.trim()
+      });
+      
+      // Update local state
+      setProfile(prev => prev ? { ...prev, displayName: newDisplayName.trim() } : null);
+      setEditingDisplayName(false);
+      setNewDisplayName('');
+    } catch (error) {
+      console.error('Failed to update display name:', error);
+      alert('Failed to save display name. Please try again.');
+    } finally {
+      setSavingDisplayName(false);
     }
   };
 
@@ -305,7 +332,38 @@ export default function Account() {
                       </div>
                       <div className="profile-row">
                         <span className="profile-label">Display Name</span>
-                        <span className="profile-value">{profile?.displayName}</span>
+                        {editingDisplayName ? (
+                          <div className="display-name-edit">
+                            <input
+                              type="text"
+                              className="nexus-input display-name-input"
+                              value={newDisplayName}
+                              onChange={(e) => setNewDisplayName(e.target.value)}
+                              placeholder={profile?.displayName || 'Enter your name'}
+                              autoFocus
+                            />
+                            <div className="display-name-actions">
+                              <button 
+                                className="nexus-btn nexus-btn-sm nexus-btn-primary"
+                                onClick={handleSaveDisplayName}
+                                disabled={savingDisplayName || !newDisplayName.trim()}
+                              >
+                                {savingDisplayName ? '...' : '✓'}
+                              </button>
+                              <button 
+                                className="nexus-btn nexus-btn-sm nexus-btn-secondary"
+                                onClick={() => { setEditingDisplayName(false); setNewDisplayName(''); }}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="profile-value editable" onClick={() => { setEditingDisplayName(true); setNewDisplayName(profile?.displayName || ''); }}>
+                            {profile?.displayName || 'Click to set'}
+                            <span className="edit-hint">✏️</span>
+                          </span>
+                        )}
                       </div>
                       <div className="profile-row">
                         <span className="profile-label">Member Since</span>
@@ -346,14 +404,6 @@ export default function Account() {
                       <div className={`api-status-item ${hasTogetherKey() ? 'connected' : ''}`}>
                         <span className="status-dot" />
                         <span>Together AI</span>
-                      </div>
-                      <div className={`api-status-item ${apiKeys.openai ? 'connected' : ''}`}>
-                        <span className="status-dot" />
-                        <span>OpenAI</span>
-                      </div>
-                      <div className={`api-status-item ${apiKeys.anthropic ? 'connected' : ''}`}>
-                        <span className="status-dot" />
-                        <span>Anthropic</span>
                       </div>
                       <div className={`api-status-item ${apiKeys.openrouter ? 'connected' : ''}`}>
                         <span className="status-dot" />
@@ -473,71 +523,13 @@ export default function Account() {
                     </details>
                   </div>
 
-                  {/* OpenAI */}
-                  <div className="api-key-card">
-                    <div className="api-key-header">
-                      <span className="provider-icon">🧠</span>
-                      <div>
-                        <h4>OpenAI</h4>
-                        <small>GPT-4, GPT-4o, DALL-E</small>
-                      </div>
-                    </div>
-                    <div className="form-group">
-                      <div className="input-with-toggle">
-                        <input
-                          type={showKeys.openai ? 'text' : 'password'}
-                          className="nexus-input"
-                          value={apiKeys.openai}
-                          onChange={(e) => setApiKeys(prev => ({ ...prev, openai: e.target.value }))}
-                          placeholder="Enter OpenAI API key"
-                        />
-                        <button 
-                          type="button"
-                          className="toggle-visibility"
-                          onClick={() => toggleShowKey('openai')}
-                        >
-                          {showKeys.openai ? '🙈' : '👁️'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Anthropic */}
-                  <div className="api-key-card">
-                    <div className="api-key-header">
-                      <span className="provider-icon">🔮</span>
-                      <div>
-                        <h4>Anthropic</h4>
-                        <small>Claude 3 Opus, Sonnet, Haiku</small>
-                      </div>
-                    </div>
-                    <div className="form-group">
-                      <div className="input-with-toggle">
-                        <input
-                          type={showKeys.anthropic ? 'text' : 'password'}
-                          className="nexus-input"
-                          value={apiKeys.anthropic}
-                          onChange={(e) => setApiKeys(prev => ({ ...prev, anthropic: e.target.value }))}
-                          placeholder="Enter Anthropic API key"
-                        />
-                        <button 
-                          type="button"
-                          className="toggle-visibility"
-                          onClick={() => toggleShowKey('anthropic')}
-                        >
-                          {showKeys.anthropic ? '🙈' : '👁️'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
                   {/* OpenRouter */}
                   <div className="api-key-card">
                     <div className="api-key-header">
                       <span className="provider-icon">🌐</span>
                       <div>
                         <h4>OpenRouter</h4>
-                        <small>Multi-provider routing</small>
+                        <small>300+ models including 50+ free • Access Claude, GPT-4, Gemini via routing</small>
                       </div>
                     </div>
                     <div className="form-group">
@@ -558,6 +550,16 @@ export default function Account() {
                         </button>
                       </div>
                     </div>
+                    <details className="api-instructions">
+                      <summary>How to get your key</summary>
+                      <ol>
+                        <li>Go to <strong>openrouter.ai</strong></li>
+                        <li>Sign in with Google, Discord, or email</li>
+                        <li>Click your name → Keys → Create Key</li>
+                        <li>Copy and paste above</li>
+                      </ol>
+                      <p className="tip-note">💡 50+ free models available including DeepSeek, Llama, Mistral!</p>
+                    </details>
                   </div>
 
                   {/* Exa.ai */}
@@ -631,7 +633,15 @@ export default function Account() {
                       
                       {character && (
                         <div className="character-display">
-                          <div className="character-avatar-large">{character.iconEmoji}</div>
+                          {character.iconPath ? (
+                            <img 
+                              src={character.iconPath} 
+                              alt={character.name}
+                              className="character-avatar-img"
+                            />
+                          ) : (
+                            <div className="character-avatar-placeholder" />
+                          )}
                           <div className="character-info">
                             <h4>{character.name} {character.isBuiltIn && <span className="badge-builtin">Built-in</span>}</h4>
                             <p className="character-description">{character.descriptionSafe.slice(0, 150)}...</p>
@@ -780,6 +790,7 @@ export default function Account() {
           background: var(--main-bg-color);
           position: relative;
           overflow-x: hidden;
+          overflow-y: auto;
         }
 
         /* Stars Background */
@@ -869,7 +880,8 @@ export default function Account() {
           position: relative;
           z-index: 1;
           padding: var(--spacing-xl);
-          min-height: calc(100vh - 80px);
+          padding-bottom: calc(var(--spacing-xl) * 3);
+          overflow-y: auto;
         }
 
         .account-container {
@@ -881,19 +893,20 @@ export default function Account() {
         .account-tabs {
           display: flex;
           flex-wrap: nowrap;
-          gap: 4px;
-          overflow-x: auto;
+          gap: 8px;
           padding-bottom: var(--spacing-sm);
           margin-bottom: var(--spacing-lg);
           border-bottom: 2px solid var(--glass-border);
-          scrollbar-width: thin;
+          width: 100%;
         }
 
         .account-tab {
+          flex: 1 1 0;
+          min-width: 0;
+          text-align: center;
           white-space: nowrap;
-          flex-shrink: 0;
-          padding: 12px 20px;
-          font-size: 0.95rem;
+          padding: 12px 8px;
+          font-size: 0.9rem;
           font-weight: 600;
           border: none;
           border-radius: 8px 8px 0 0;
@@ -922,7 +935,7 @@ export default function Account() {
           border-radius: var(--border-radius-lg);
           padding: var(--spacing-xl);
           backdrop-filter: blur(12px);
-          min-height: 500px;
+          margin-bottom: var(--spacing-xl);
         }
 
         .tab-panel h2 {
@@ -954,12 +967,18 @@ export default function Account() {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
           gap: var(--spacing-lg);
+          justify-content: center;
+          max-width: 1200px;
+          margin: 0 auto;
         }
 
         .settings-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
           gap: var(--spacing-lg);
+          justify-content: center;
+          max-width: 1200px;
+          margin: 0 auto;
         }
 
         .api-keys-grid {
@@ -967,6 +986,10 @@ export default function Account() {
           grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
           gap: var(--spacing-lg);
           margin-bottom: var(--spacing-xl);
+          justify-content: center;
+          max-width: 1200px;
+          margin-left: auto;
+          margin-right: auto;
         }
 
         /* Cards */
@@ -1018,6 +1041,52 @@ export default function Account() {
 
         .profile-value {
           font-weight: 500;
+        }
+
+        .profile-value.editable {
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 8px;
+          border-radius: var(--border-radius);
+          transition: background 0.2s ease;
+        }
+
+        .profile-value.editable:hover {
+          background: rgba(255, 255, 255, 0.05);
+        }
+
+        .profile-value .edit-hint {
+          opacity: 0.5;
+          font-size: 0.8rem;
+          transition: opacity 0.2s;
+        }
+
+        .profile-value.editable:hover .edit-hint {
+          opacity: 1;
+        }
+
+        .display-name-edit {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .display-name-input {
+          width: 150px;
+          padding: 6px 10px !important;
+          font-size: 0.875rem;
+        }
+
+        .display-name-actions {
+          display: flex;
+          gap: 4px;
+        }
+
+        .nexus-btn-sm {
+          padding: 6px 10px !important;
+          font-size: 0.8rem;
         }
 
         /* Storage */
@@ -1358,6 +1427,25 @@ export default function Account() {
           display: flex;
           align-items: center;
           gap: var(--spacing-lg);
+        }
+
+        .character-avatar-img {
+          width: 80px;
+          height: 80px;
+          border-radius: 50%;
+          object-fit: cover;
+          border: 3px solid var(--accent-color);
+          box-shadow: var(--glow-primary);
+          flex-shrink: 0;
+        }
+
+        .character-avatar-placeholder {
+          width: 80px;
+          height: 80px;
+          border-radius: 50%;
+          background: var(--glass-bg-secondary);
+          border: 2px solid var(--glass-border);
+          flex-shrink: 0;
         }
 
         .character-avatar-large {

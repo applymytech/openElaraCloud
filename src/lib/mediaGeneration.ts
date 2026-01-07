@@ -6,9 +6,14 @@
  * Handles:
  * - Image generation (selfies, custom prompts) via Together.ai
  * - Video generation via Together.ai
- * - Voice/TTS generation via Together.ai, ElevenLabs
+ * - Voice/TTS generation via Together.ai (Cartesia Sonic)
  * 
  * All using BYOK (Bring Your Own Key) - direct API calls from browser
+ * 
+ * Supported Providers (matching desktop app):
+ * - Together.ai: Images, Video, TTS, Chat, Embeddings
+ * - OpenRouter: Chat routing to 300+ models
+ * - Exa.ai: Web search (optional)
  */
 
 import { getAPIKey } from './byok';
@@ -22,6 +27,7 @@ import {
   getDefaultVideoModel,
   getImageModelMetadata,
   getVideoModelMetadata,
+  getCostEffectiveVideoModels,
   type ImageModelMetadata,
   type VideoModelMetadata,
 } from './models';
@@ -56,28 +62,76 @@ export const IMAGE_MODELS = IMAGE_MODEL_METADATA;
 export const VIDEO_MODELS = VIDEO_MODEL_METADATA;
 
 /**
- * Build a selfie prompt using character's appearance
+ * Build a character-contextual prompt (inserts character into scene)
+ * 
+ * NOTE: "Selfie" here means character-centric, NOT literally prompting for "selfie"
+ * The scene should be contextual (decided by AI in agentic mode, or user in custom)
+ * and NOT include the word "selfie" unless that's genuinely desired.
  */
 export function buildSelfiePrompt(
   character: Character,
   sceneRequest?: string
 ): string {
-  // Character's physical description (first person for selfie)
+  // Character's physical description (first person for character-centric)
   const appearance = character.descriptionFirstPerson || character.descriptionSafe;
   const attire = character.attireFirstPerson || character.attire;
   
-  // Scene from user request or default
+  // Scene from user request or contextual default (NOT "selfie" word!)
   const scene = sceneRequest?.trim() 
     ? sceneRequest 
-    : 'casual selfie, looking at camera with a warm smile';
+    : 'looking at camera with a warm, natural expression';
   
   // Combine into full prompt
   return `${appearance} ${attire} ${scene}, highly detailed, professional photography, soft lighting, sharp focus`;
 }
 
 /**
+ * Check model parameter support using actual metadata
+ * 
+ * Returns detailed support info rather than just boolean "known"
+ * This lets us send exactly the params each model supports
+ */
+function getModelParamSupport(modelId: string): {
+  known: boolean;
+  supportsSteps: boolean;
+  supportsGuidanceScale: boolean;
+  supportsNegativePrompt: boolean;
+  supportsSeed: boolean;
+} {
+  const meta = IMAGE_MODEL_METADATA[modelId];
+  
+  // If we have metadata, use the actual flags
+  if (meta) {
+    return {
+      known: true,
+      supportsSteps: meta.supportsSteps ?? false,
+      supportsGuidanceScale: meta.supportsGuidanceScale ?? false,
+      supportsNegativePrompt: meta.supportsNegativePrompt ?? false,
+      supportsSeed: meta.supportsSeed ?? false,
+    };
+  }
+  
+  // No metadata - use MINIMUM VIABLE PAYLOAD (none of the optional params)
+  return {
+    known: false,
+    supportsSteps: false,
+    supportsGuidanceScale: false,
+    supportsNegativePrompt: false,
+    supportsSeed: false,
+  };
+}
+
+/**
  * Generate an image using Together.ai
- * Uses proper model metadata from models.ts (verified via ~800 API calls)
+ * 
+ * DEFENSIVE PARAMETER FILTERING:
+ * - ONLY Together.ai models with metadata in IMAGE_MODEL_METADATA are supported
+ * - Uses model metadata to determine which params are supported
+ * - Models with supportsSteps: false won't get steps param
+ * - Models with supportsGuidanceScale: false won't get guidance_scale
+ * - This prevents "Parameter 'X' is not supported" errors
+ * 
+ * Based on ~800 API calls testing all Together.ai models (Nov 2025)
  */
 export async function generateImage(
   options: ImageGenerationOptions
@@ -90,6 +144,16 @@ export async function generateImage(
   const character = getActiveCharacter();
   const model = options.model || getDefaultImageModel();
   const modelConfig = getImageModelMetadata(model);
+  const paramSupport = getModelParamSupport(model);
+  
+  // ENFORCE: Only Together.ai models with metadata are supported
+  if (!modelConfig) {
+    throw new Error(
+      `Unsupported image model: ${model}. ` +
+      `Only Together.ai models with metadata are supported. ` +
+      `Check models.ts IMAGE_MODEL_METADATA for the full list.`
+    );
+  }
   
   // Build prompt
   let prompt = options.prompt;
@@ -97,51 +161,71 @@ export async function generateImage(
     prompt = buildSelfiePrompt(character, options.selfieScene || options.prompt);
   }
   
-  // Get model-specific defaults from verified metadata
-  const width = options.width || modelConfig?.defaultWidth || 1024;
-  const height = options.height || modelConfig?.defaultHeight || 1024;
-  const steps = options.steps || modelConfig?.defaultSteps || 4;
-  const guidanceScale = options.guidanceScale || modelConfig?.defaultGuidanceScale;
-  
-  // Validate steps are within model's allowed range
-  const validatedSteps = modelConfig?.stepRange 
-    ? Math.min(Math.max(steps, modelConfig.stepRange.min), modelConfig.stepRange.max)
-    : steps;
-  
-  // Negative prompt if supported by model
-  let negativePrompt = options.negativePrompt || character.negativePrompt;
-  const supportsNegativePrompt = modelConfig?.supportsNegativePrompt ?? true;
-  
-  // Build API request body
+  // ============================================================================
+  // MINIMUM VIABLE PAYLOAD - Always start with just model + prompt
+  // ============================================================================
   const requestBody: Record<string, any> = {
     model,
     prompt,
-    width,
-    height,
-    steps: validatedSteps,
     n: 1,
     response_format: 'b64_json',
   };
   
-  // Add optional parameters based on model capabilities
-  if (supportsNegativePrompt && negativePrompt) {
-    requestBody.negative_prompt = negativePrompt;
-  }
+  // ============================================================================
+  // OPTIONAL PARAMETERS - Only add if model metadata says it's supported
+  // ============================================================================
   
-  if (guidanceScale !== undefined && modelConfig?.guidanceScaleRange) {
-    // Validate guidance scale is within model's range
-    const validatedGuidance = Math.min(
-      Math.max(guidanceScale, modelConfig.guidanceScaleRange.min),
-      modelConfig.guidanceScaleRange.max
+  // Width/Height - Generally safe to include (most models support these)
+  const width = options.width || modelConfig?.defaultWidth || 1024;
+  const height = options.height || modelConfig?.defaultHeight || 1024;
+  requestBody.width = width;
+  requestBody.height = height;
+  
+  // Steps - ONLY send if model supports it (supportsSteps: true)
+  if (paramSupport.supportsSteps && modelConfig?.stepRange) {
+    const steps = options.steps || modelConfig.defaultSteps || 4;
+    const validatedSteps = Math.min(
+      Math.max(steps, modelConfig.stepRange.min), 
+      modelConfig.stepRange.max
     );
-    requestBody.guidance_scale = validatedGuidance;
+    requestBody.steps = validatedSteps;
   }
+  // If supportsSteps: false, DON'T send steps - let API use defaults
   
-  if (options.seed !== undefined && modelConfig?.supportsSeed) {
+  // Guidance Scale - ONLY send if model supports it (supportsGuidanceScale: true)
+  if (paramSupport.supportsGuidanceScale && modelConfig?.guidanceScaleRange && modelConfig.defaultGuidanceScale !== null) {
+    const guidanceScale = options.guidanceScale || modelConfig.defaultGuidanceScale;
+    if (guidanceScale !== undefined) {
+      const validatedGuidance = Math.min(
+        Math.max(guidanceScale, modelConfig.guidanceScaleRange.min),
+        modelConfig.guidanceScaleRange.max
+      );
+      requestBody.guidance_scale = validatedGuidance;
+    }
+  }
+  // If supportsGuidanceScale: false, DON'T send guidance_scale
+  
+  // Negative Prompt - ONLY send if model supports it
+  if (paramSupport.supportsNegativePrompt) {
+    const negativePrompt = options.negativePrompt || character.negativePrompt;
+    if (negativePrompt) {
+      requestBody.negative_prompt = negativePrompt;
+    }
+  }
+  // If supportsNegativePrompt: false, DON'T send it
+  
+  // Seed - ONLY send if model supports it
+  if (paramSupport.supportsSeed && options.seed !== undefined) {
     requestBody.seed = options.seed;
   }
+  // If supportsSeed: false, DON'T send seed
   
-  // API call
+  // Log what we're sending (helpful for debugging)
+  console.log(`[Image Gen] Model: ${model}, Known: ${paramSupport.known}, Params: ${Object.keys(requestBody).join(', ')}`);
+  
+  // ============================================================================
+  // API CALL
+  // ============================================================================
   const response = await fetch('https://api.together.xyz/v1/images/generations', {
     method: 'POST',
     headers: {
@@ -165,15 +249,20 @@ export async function generateImage(
   
   const dataUrl = `data:image/png;base64,${base64}`;
   
-  // Generate metadata for signing
+  // Generate metadata for signing with full context
   const metadata = await generateMetadata({
     contentType: 'image',
     prompt,
     model,
     width,
     height,
-    steps: validatedSteps,
+    steps: requestBody.steps,
+    guidanceScale: requestBody.guidance_scale,
+    negativePrompt: requestBody.negative_prompt,
     seed: options.seed,
+    generationType: options.isSelfie ? 'selfie' : 'custom',
+    userRequest: options.selfieScene || options.prompt,
+    includeFullPrompt: true, // Store full prompt for provenance
   });
   
   // Sign the image
@@ -224,13 +313,18 @@ export interface AgenticSelfieResult {
 }
 
 /**
- * AGENTIC SELFIE GENERATION - The AI decides the scene based on mood and persona
+ * AGENTIC CHARACTER IMAGE GENERATION - The AI decides the scene based on mood and persona
  * 
- * This is the REAL desktop workflow:
+ * ARCHITECTURE CLARIFICATION:
+ * - This function does TWO API calls: (1) LLM for scene decision, (2) Image generation
+ * - The "selfie" term is legacy - this is really "agentic character-centric image"
+ * - The AI contextually inserts the character into a scene, NOT prompting for "selfie"!
+ * 
+ * Workflow:
  * 1. User provides optional scene suggestion
- * 2. LLM (with character persona + mood) DECIDES the actual scene/attire
- * 3. AI's scene description goes to image generation model
- * 4. Result is character-authentic, mood-influenced, not just generic
+ * 2. LLM (with character persona + mood) DECIDES the actual scene/attire contextually
+ * 3. AI's contextual scene description goes to image generation model via generateImage()
+ * 4. Result is character-authentic, mood-influenced, using SAME endpoint as custom mode
  */
 export async function generateAgenticSelfie(
   options: AgenticSelfieOptions
@@ -303,16 +397,142 @@ export async function generateAgenticSelfie(
   
   const finalPrompt = `${appearance} ${attire} ${sceneDescription}, highly detailed, professional photography, soft lighting, sharp focus`;
   
-  // STEP 3: Generate the image
+  // STEP 3: Generate the image with full context metadata
   const image = await generateImage({
     prompt: finalPrompt,
     model: options.model,
-    isSelfie: false, // We already built the prompt
+    isSelfie: true,
+    selfieScene: sceneDescription,
   });
+  
+  // Update metadata to include AI decision and conversation context
+  if (image.signedContent.metadata) {
+    image.signedContent.metadata.generationType = 'agentic';
+    image.signedContent.metadata.aiDecision = aiDecision;
+    image.signedContent.metadata.userRequest = options.sceneSuggestion;
+    image.signedContent.metadata.conversationContext = options.conversationContext;
+    // Re-serialize metadata JSON
+    image.signedContent.metadataJson = JSON.stringify(image.signedContent.metadata);
+  }
   
   return {
     image,
     aiSceneDecision: sceneDescription,
+    attireOverride,
+  };
+}
+
+/**
+ * FULLY AUTONOMOUS SELFIE AGENT
+ * 
+ * The LLM has complete control:
+ * - Selects image generation model based on desired aesthetic
+ * - Chooses all parameters (steps, guidance, etc.)
+ * - Decides scene based on conversation context and memories
+ * - User just triggers it - all decisions are AI-made
+ * 
+ * This creates "entropic" selfies where each one is unique and context-aware
+ */
+export async function generateAutonomousSelfie(options: {
+  conversationContext?: string;
+  character?: Character;
+  moodState?: MoodState | null;
+}): Promise<AgenticSelfieResult> {
+  const togetherKey = getAPIKey('together');
+  if (!togetherKey) {
+    throw new Error('Together.ai API key required. Add it in Settings.');
+  }
+  
+  const character = options.character || getActiveCharacter();
+  
+  // Build autonomous decision prompt
+  const systemPrompt = `You are ${character.name}. You're about to take a selfie, and you have COMPLETE CREATIVE CONTROL.
+
+Your physical appearance (always use verbatim):
+${character.descriptionFirstPerson || character.descriptionSafe}
+
+${character.attireFirstPerson || character.attire}
+
+# YOUR TASK:
+1. Review the conversation context and your current mood
+2. Choose the PERFECT image generation model for the aesthetic you want
+3. Decide on the scene/setting that reflects the conversation or your mood
+4. Specify any special attire if you want to change from your default
+
+# AVAILABLE MODELS:
+${Object.entries(IMAGE_MODEL_METADATA).map(([id, meta]) => 
+  `- ${id}: ${meta.displayName} (${meta.description || 'general purpose'})`
+).join('\n')}
+
+# RESPONSE FORMAT:
+MODEL: [chosen model ID]
+SCENE: [your scene description - be creative and context-aware]
+ATTIRE: [optional - only if you want to change from default]
+
+Make it personal, make it relevant to our conversation. Be entropic - surprise me!`;
+
+  // Build context
+  let contextParts: string[] = [];
+  
+  if (options.moodState) {
+    const emotionalContext = getMoodEmotionalContext(options.moodState, character.name);
+    if (emotionalContext) {
+      contextParts.push(`**My Current Mood:**\n${emotionalContext}`);
+    }
+  }
+  
+  if (options.conversationContext) {
+    contextParts.push(`**What We've Been Talking About:**\n${options.conversationContext}`);
+  }
+  
+  const userMessage = contextParts.length > 0 
+    ? contextParts.join('\n\n')
+    : 'Generate a selfie that shows who you are right now.';
+  
+  // Let AI decide everything
+  const aiResponse = await chat([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userMessage },
+  ], {
+    model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+    maxTokens: 500,
+  });
+  
+  const aiDecision = aiResponse.choices[0]?.message?.content || '';
+  
+  // Parse AI's decision
+  const modelMatch = aiDecision.match(/MODEL:\s*(.+?)(?:\n|$)/i);
+  const sceneMatch = aiDecision.match(/SCENE:\s*([\s\S]+?)(?:\n(?:ATTIRE:|MODEL:)|$)/i);
+  const attireMatch = aiDecision.match(/ATTIRE:\s*(.+?)(?:\n|$)/i);
+  
+  const chosenModel = modelMatch?.[1]?.trim() || getDefaultImageModel();
+  const sceneDescription = sceneMatch?.[1]?.trim() || 'a casual selfie with a warm smile';
+  const attireOverride = attireMatch?.[1]?.trim();
+  
+  // Build final prompt
+  const appearance = character.descriptionFirstPerson || character.descriptionSafe;
+  const attire = attireOverride || character.attireFirstPerson || character.attire;
+  const finalPrompt = `${appearance} ${attire} ${sceneDescription}, highly detailed, professional photography, soft lighting, sharp focus`;
+  
+  // Generate with AI's chosen settings
+  const image = await generateImage({
+    prompt: finalPrompt,
+    model: chosenModel,
+    isSelfie: true,
+    selfieScene: sceneDescription,
+  });
+  
+  // Update metadata
+  if (image.signedContent.metadata) {
+    image.signedContent.metadata.generationType = 'agentic';
+    image.signedContent.metadata.aiDecision = `MODEL: ${chosenModel}\nSCENE: ${sceneDescription}${attireOverride ? `\nATTIRE: ${attireOverride}` : ''}`;
+    image.signedContent.metadata.conversationContext = options.conversationContext;
+    image.signedContent.metadataJson = JSON.stringify(image.signedContent.metadata);
+  }
+  
+  return {
+    image,
+    aiSceneDecision: `I chose ${IMAGE_MODEL_METADATA[chosenModel]?.displayName || chosenModel} for this scene: ${sceneDescription}`,
     attireOverride,
   };
 }
@@ -330,10 +550,14 @@ export interface VideoGenerationOptions {
   guidanceScale?: number;
   firstFrameImage?: string;  // base64 or URL for I2V
   lastFrameImage?: string;   // base64 or URL for I2V (if supported)
+  seed?: number;
   
   // Selfie mode
   isSelfie?: boolean;
   selfieScene?: string;
+  
+  // Progress callback for polling
+  onProgress?: (status: string, attempt: number) => void;
 }
 
 export interface GeneratedVideo {
@@ -345,8 +569,15 @@ export interface GeneratedVideo {
 }
 
 /**
- * Generate a video using Together.ai
- * Uses proper model metadata from models.ts
+ * Generate a video using Together.ai with ASYNC POLLING
+ * 
+ * CRITICAL: Video generation is ASYNCHRONOUS:
+ * 1. POST to /v1/video/generations creates a JOB
+ * 2. Returns job ID immediately
+ * 3. Must poll GET /v1/video/generations/{job_id} until status = "completed"
+ * 4. Job statuses: queued, in_progress, completed, failed, cancelled
+ * 
+ * Uses proper model metadata from models.ts - unsupported models rejected
  */
 export async function generateVideo(
   options: VideoGenerationOptions
@@ -360,7 +591,11 @@ export async function generateVideo(
   const modelConfig = getVideoModelMetadata(model);
   
   if (!modelConfig) {
-    throw new Error(`Unknown video model: ${model}. Please select a valid model.`);
+    throw new Error(
+      `Unsupported video model: ${model}. ` +
+      `Only Together.ai models with metadata are supported. ` +
+      `Check models.ts VIDEO_MODEL_METADATA for the full list.`
+    );
   }
   
   // Build prompt
@@ -380,16 +615,16 @@ export async function generateVideo(
     modelConfig.maxDuration
   );
   
-  // Build API request body
+  // Build API request body - only supported parameters per model metadata
   const requestBody: Record<string, any> = {
     model,
     prompt,
     width,
     height,
-    duration,
+    seconds: duration, // Together.ai uses "seconds" not "duration"
   };
   
-  // Add optional parameters based on model capabilities
+  // Add optional parameters ONLY if model supports them
   if (options.negativePrompt && modelConfig.parameterSupport.negative_prompt) {
     requestBody.negative_prompt = options.negativePrompt;
   }
@@ -398,17 +633,22 @@ export async function generateVideo(
     requestBody.guidance_scale = options.guidanceScale;
   }
   
-  // Image-to-Video support
+  if (options.seed !== undefined) {
+    requestBody.seed = options.seed;
+  }
+  
+  // Image-to-Video support (first frame)
   if (options.firstFrameImage && modelConfig.features.firstFrame) {
-    requestBody.first_frame_image = options.firstFrameImage;
+    requestBody.frame_images = [{
+      input_image: options.firstFrameImage,
+      frame: 0,
+    }];
   }
   
-  if (options.lastFrameImage && modelConfig.features.lastFrame) {
-    requestBody.last_frame_image = options.lastFrameImage;
-  }
+  console.log(`[Video Gen] Creating job with model: ${model}`);
   
-  // API call
-  const response = await fetch('https://api.together.xyz/v1/video/generations', {
+  // STEP 1: Create the video generation JOB
+  const createResponse = await fetch('https://api.together.xyz/v1/video/generations', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${togetherKey}`,
@@ -417,25 +657,78 @@ export async function generateVideo(
     body: JSON.stringify(requestBody),
   });
   
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || 'Video generation failed');
+  if (!createResponse.ok) {
+    const error = await createResponse.json().catch(() => ({}));
+    throw new Error(error.error?.message || `Video generation failed: ${createResponse.statusText}`);
   }
   
-  const result = await response.json();
-  const videoUrl = result.data?.[0]?.url || result.url;
+  const jobData = await createResponse.json();
+  const jobId = jobData.id;
   
-  if (!videoUrl) {
-    throw new Error('No video URL received');
+  if (!jobId) {
+    throw new Error('No job ID received from video generation API');
   }
   
-  return {
-    url: videoUrl,
-    prompt,
-    model,
-    duration,
-    resolution,
-  };
+  console.log(`[Video Gen] Job created: ${jobId}`);
+  
+  // STEP 2: Poll for completion
+  let attempts = 0;
+  const maxAttempts = 120; // 10 minutes max (5 sec intervals)
+  const pollInterval = 5000; // 5 seconds
+  
+  while (attempts < maxAttempts) {
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+    attempts++;
+    
+    console.log(`[Video Gen] Polling job ${jobId} (attempt ${attempts}/${maxAttempts})`);
+    
+    const statusResponse = await fetch(`https://api.together.xyz/v1/video/generations/${jobId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${togetherKey}`,
+      },
+    });
+    
+    if (!statusResponse.ok) {
+      console.warn(`[Video Gen] Polling failed: ${statusResponse.statusText}`);
+      continue; // Retry
+    }
+    
+    const status = await statusResponse.json();
+    
+    console.log(`[Video Gen] Job status: ${status.status}`);
+    
+    // Call progress callback if provided
+    if (options.onProgress) {
+      options.onProgress(status.status, attempts);
+    }
+    
+    if (status.status === 'completed') {
+      const videoUrl = status.outputs?.video_url;
+      if (!videoUrl) {
+        throw new Error('Video completed but no URL received');
+      }
+      
+      console.log(`[Video Gen] ✓ Video ready: ${videoUrl}`);
+      
+      return {
+        url: videoUrl,
+        prompt,
+        model,
+        duration,
+        resolution,
+      };
+    } else if (status.status === 'failed') {
+      const errorMsg = status.info?.errors || 'Video generation failed';
+      throw new Error(`Video generation failed: ${errorMsg}`);
+    } else if (status.status === 'cancelled') {
+      throw new Error('Video generation was cancelled');
+    }
+    
+    // Status is 'queued' or 'in_progress' - continue polling
+  }
+  
+  throw new Error('Video generation timed out after 10 minutes');
 }
 
 // ============================================================================
@@ -451,6 +744,7 @@ export interface AgenticVideoOptions {
   moodState?: MoodState | null;
   conversationContext?: string;
   duration?: number;
+  onProgress?: (status: string, attempt: number) => void;
 }
 
 export interface AgenticVideoResult {
@@ -460,13 +754,18 @@ export interface AgenticVideoResult {
 }
 
 /**
- * AGENTIC VIDEO GENERATION - The AI decides the scene based on mood and persona
+ * AGENTIC CHARACTER VIDEO GENERATION - The AI decides the scene based on mood and persona
  * 
- * Same workflow as agentic selfie:
+ * ARCHITECTURE CLARIFICATION:
+ * - This function does TWO API calls: (1) LLM for scene decision, (2) Video generation
+ * - Both selfie and custom modes use the SAME video generation endpoint
+ * - The AI contextually creates a scene with the character, with cinematography
+ * 
+ * Workflow:
  * 1. User provides optional scene suggestion
- * 2. LLM (with character persona + mood) DECIDES the actual scene/attire
- * 3. AI's scene description + camera directions go to video model
- * 4. Result is character-authentic, mood-influenced
+ * 2. LLM (with character persona + mood) DECIDES the actual scene/attire/camera contextually
+ * 3. AI's contextual scene description goes to video model via generateVideo()
+ * 4. Result is character-authentic, mood-influenced, using SAME endpoint as custom mode
  */
 export async function generateAgenticVideo(
   options: AgenticVideoOptions
@@ -544,6 +843,7 @@ export async function generateAgenticVideo(
     model: options.model,
     duration: options.duration,
     isSelfie: false, // We already built the prompt
+    onProgress: options.onProgress, // Pass through progress callback
   });
   
   return {
@@ -596,41 +896,6 @@ export async function generateSpeech(options: TTSOptions): Promise<Blob> {
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error?.message || 'TTS generation failed');
-  }
-  
-  return response.blob();
-}
-
-/**
- * Generate speech using ElevenLabs
- */
-export async function generateSpeechElevenLabs(options: TTSOptions): Promise<Blob> {
-  const elevenKey = getAPIKey('elevenlabs');
-  if (!elevenKey) {
-    throw new Error('ElevenLabs API key required. Add it in Settings.');
-  }
-  
-  const voiceId = options.voice || 'EXAVITQu4vr4xnSDxMaL'; // Default: Sarah
-  
-  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-    method: 'POST',
-    headers: {
-      'xi-api-key': elevenKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      text: options.text,
-      model_id: 'eleven_turbo_v2_5',
-      voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.75,
-      },
-    }),
-  });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail?.message || 'ElevenLabs TTS failed');
   }
   
   return response.blob();

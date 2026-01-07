@@ -28,7 +28,7 @@ export interface ImageModelMetadata {
   displayName: string;
   description: string;
   defaultSteps: number;
-  stepRange: { min: number; max: number };
+  stepRange: { min: number; max: number } | null;  // null = steps not supported
   defaultWidth: number;
   defaultHeight: number;
   resolutionPresets: ResolutionPreset[];
@@ -37,8 +37,10 @@ export interface ImageModelMetadata {
   supportsT2I: boolean;
   supportsI2I: boolean;
   supportsSeed: boolean;
-  defaultGuidanceScale: number;
-  guidanceScaleRange: { min: number; max: number };
+  supportsSteps: boolean;           // CRITICAL: Some models (Google, ByteDance) don't support steps
+  supportsGuidanceScale: boolean;   // CRITICAL: Some models don't support guidance_scale
+  defaultGuidanceScale: number | null;  // null if not supported
+  guidanceScaleRange: { min: number; max: number } | null;  // null = not supported
   outputFormats: string[];
   recommended?: boolean;
   free?: boolean;
@@ -64,6 +66,7 @@ export interface VideoModelMetadata {
     steps: boolean;
   };
   recommended?: boolean;
+  costEffective?: boolean; // Cheap models suitable for agent selfies
 }
 
 export interface ChatModelMetadata {
@@ -136,6 +139,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -162,6 +167,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -186,6 +193,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -211,6 +220,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -238,6 +249,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -264,6 +277,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -286,6 +301,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -312,6 +329,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -336,6 +355,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 10.2,
     guidanceScaleRange: { min: 0.5, max: 20 },
     outputFormats: ["jpeg", "png"],
@@ -360,6 +381,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -385,6 +408,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: false, // VERIFIED: Does not support I2I
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -411,6 +436,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -435,6 +462,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -459,6 +488,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -485,6 +516,8 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
@@ -508,10 +541,149 @@ export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
     supportsT2I: true,
     supportsI2I: true,
     supportsSeed: true,
+    supportsSteps: true,
+    supportsGuidanceScale: true,
     defaultGuidanceScale: 15.2,
     guidanceScaleRange: { min: 0.5, max: 30 },
     outputFormats: ["jpeg", "png"],
     recommended: true,
+  },
+
+  // ============================================================================
+  // GOOGLE IMAGEN MODELS - MINIMAL PAYLOAD (no steps, no guidance_scale)
+  // These models use different API structure - only prompt, model, width, height
+  // ============================================================================
+  "google/imagen-4.0-preview": {
+    displayName: "Google Imagen 4.0 Preview",
+    description: "Google's latest image model - Preview tier",
+    defaultSteps: 0, // Not supported
+    stepRange: null, // Not supported
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    resolutionPresets: [
+      { width: 1024, height: 1024, label: "1K Square (1:1)" },
+      { width: 1248, height: 832, label: "1K Landscape (3:2)" },
+      { width: 832, height: 1248, label: "1K Portrait (2:3)" },
+      { width: 1344, height: 768, label: "1K Wide (16:9)" },
+      { width: 768, height: 1344, label: "1K Tall (9:16)" },
+    ],
+    supportsLoRA: false,
+    supportsNegativePrompt: false,
+    supportsT2I: true,
+    supportsI2I: false,
+    supportsSeed: false,
+    supportsSteps: false,
+    supportsGuidanceScale: false,
+    defaultGuidanceScale: null,
+    guidanceScaleRange: null,
+    outputFormats: ["jpeg", "png"],
+    recommended: true,
+  },
+  "google/imagen-4.0-fast": {
+    displayName: "Google Imagen 4.0 Fast",
+    description: "Google's fast image model - Quick generation",
+    defaultSteps: 0,
+    stepRange: null,
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    resolutionPresets: [
+      { width: 1024, height: 1024, label: "1K Square (1:1)" },
+      { width: 1248, height: 832, label: "1K Landscape (3:2)" },
+      { width: 832, height: 1248, label: "1K Portrait (2:3)" },
+      { width: 1344, height: 768, label: "1K Wide (16:9)" },
+      { width: 768, height: 1344, label: "1K Tall (9:16)" },
+    ],
+    supportsLoRA: false,
+    supportsNegativePrompt: false,
+    supportsT2I: true,
+    supportsI2I: false,
+    supportsSeed: false,
+    supportsSteps: false,
+    supportsGuidanceScale: false,
+    defaultGuidanceScale: null,
+    guidanceScaleRange: null,
+    outputFormats: ["jpeg", "png"],
+    recommended: true,
+  },
+  "google/imagen-4.0-ultra": {
+    displayName: "Google Imagen 4.0 Ultra",
+    description: "Google's premium image model - Highest quality",
+    defaultSteps: 0,
+    stepRange: null,
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    resolutionPresets: [
+      { width: 1024, height: 1024, label: "1K Square (1:1)" },
+      { width: 1248, height: 832, label: "1K Landscape (3:2)" },
+      { width: 832, height: 1248, label: "1K Portrait (2:3)" },
+      { width: 1344, height: 768, label: "1K Wide (16:9)" },
+      { width: 768, height: 1344, label: "1K Tall (9:16)" },
+    ],
+    supportsLoRA: false,
+    supportsNegativePrompt: false,
+    supportsT2I: true,
+    supportsI2I: false,
+    supportsSeed: false,
+    supportsSteps: false,
+    supportsGuidanceScale: false,
+    defaultGuidanceScale: null,
+    guidanceScaleRange: null,
+    outputFormats: ["jpeg", "png"],
+    recommended: true,
+  },
+  "google/gemini-3-pro-image": {
+    displayName: "Gemini 3 Pro Image",
+    description: "Gemini-powered image generation - Multiple resolutions",
+    defaultSteps: 0,
+    stepRange: null,
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    resolutionPresets: [
+      // 1K resolutions
+      { width: 1024, height: 1024, label: "1K Square (1:1)" },
+      { width: 1248, height: 832, label: "1K (3:2)" },
+      { width: 1344, height: 768, label: "1K (16:9)" },
+      // 2K resolutions
+      { width: 2048, height: 2048, label: "2K Square (1:1)" },
+      { width: 2496, height: 1664, label: "2K (3:2)" },
+      { width: 2688, height: 1536, label: "2K (16:9)" },
+      // 4K resolutions
+      { width: 4096, height: 4096, label: "4K Square (1:1)" },
+    ],
+    supportsLoRA: false,
+    supportsNegativePrompt: false,
+    supportsT2I: true,
+    supportsI2I: false,
+    supportsSeed: false,
+    supportsSteps: false,
+    supportsGuidanceScale: false,
+    defaultGuidanceScale: null,
+    guidanceScaleRange: null,
+    outputFormats: ["jpeg", "png"],
+    recommended: true,
+  },
+  "google/flash-image-2.5": {
+    displayName: "Flash Image 2.5",
+    description: "Google's flash image model - Fast generation",
+    defaultSteps: 0,
+    stepRange: null,
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+    resolutionPresets: [
+      { width: 1024, height: 1024, label: "Square (1:1)" },
+      { width: 1248, height: 832, label: "Landscape (3:2)" },
+      { width: 832, height: 1248, label: "Portrait (2:3)" },
+    ],
+    supportsLoRA: false,
+    supportsNegativePrompt: false,
+    supportsT2I: true,
+    supportsI2I: false,
+    supportsSeed: false,
+    supportsSteps: false,
+    supportsGuidanceScale: false,
+    defaultGuidanceScale: null,
+    guidanceScaleRange: null,
+    outputFormats: ["jpeg", "png"],
   },
 };
 
@@ -541,6 +713,7 @@ export const VIDEO_MODEL_METADATA: Record<string, VideoModelMetadata> = {
       steps: false,
     },
     recommended: true,
+    costEffective: true, // 5s, good for quick selfies
   },
   "minimax/hailuo-02": {
     displayName: "MiniMax Hailuo 02",
@@ -647,9 +820,8 @@ export const VIDEO_MODEL_METADATA: Record<string, VideoModelMetadata> = {
       steps: false,
     },
     recommended: true,
+    costEffective: true, // Fast generation, cheaper
   },
-
-  // PixVerse - Most resolution options
   "pixverse/pixverse-v5": {
     displayName: "PixVerse v5",
     description: "5s, 20+ resolutions, first+last I2V",
@@ -1004,14 +1176,10 @@ export const UNSUPPORTED_IMAGE_MODELS = [
   "black-forest-labs/FLUX.1-pro", // Internal server errors
   "black-forest-labs/FLUX.1-dev-lora", // Requires image_loras parameter
   "black-forest-labs/FLUX.1-kontext-dev", // Requires condition_image
-  "google/imagen-4.0-preview", // Different API structure
-  "google/imagen-4.0-ultra", // Different API structure
-  "google/imagen-4.0-fast", // Different API structure
-  "google/flash-image-2.5", // Different API structure
-  "google/gemini-3-pro-image", // Different API structure
-  "ByteDance-Seed/Seedream-3.0", // Different API structure
-  "ByteDance-Seed/Seedream-4.0", // Different API structure
-  "ideogram/ideogram-3.0", // Different API structure
+  // Google Imagen models now supported with MINIMUM VIABLE PAYLOAD (no steps/guidance)
+  "ByteDance-Seed/Seedream-3.0", // Different API structure - needs investigation
+  "ByteDance-Seed/Seedream-4.0", // Different API structure - needs investigation
+  "ideogram/ideogram-3.0", // Different API structure - needs investigation
 ];
 
 // ============================================================================
@@ -1131,14 +1299,31 @@ export async function getChatModels(): Promise<Model[]> {
 export async function getImageModels(): Promise<Model[]> {
   try {
     const allModels = await getCachedOrFetchModels();
-    const imageModels = allModels.filter((m: any) => 
-      m.type === 'image' && !UNSUPPORTED_IMAGE_MODELS.includes(m.id)
-    );
+    
+    // STRICT FILTERING: Only return models that:
+    // 1. Are NOT in the unsupported list
+    // 2. HAVE verified metadata in IMAGE_MODEL_METADATA
+    // This prevents unknown models from breaking the app
+    const imageModels = allModels.filter((m: any) => {
+      // Skip unsupported models
+      if (UNSUPPORTED_IMAGE_MODELS.includes(m.id)) {
+        return false;
+      }
+      // Only include models with verified metadata
+      // Unknown models are rejected - "better safe than sorry"
+      if (!IMAGE_MODEL_METADATA[m.id]) {
+        console.log(`[Models] Skipping unknown image model: ${m.id} (no verified metadata)`);
+        return false;
+      }
+      return m.type === 'image';
+    });
+    
     return imageModels.map((model: any) => 
       enhanceModelWithMetadata(model, IMAGE_MODEL_METADATA, 'image')
     );
   } catch (error) {
     console.error('[Models] Failed to get image models:', error);
+    // Fallback: Use hardcoded metadata for known working models only
     return Object.entries(IMAGE_MODEL_METADATA).map(([id, meta]) => ({
       id,
       type: 'image' as const,
@@ -1176,6 +1361,16 @@ export function getRecommendedVideoModels(): string[] {
     .map(([id]) => id);
 }
 
+/**
+ * Get cost-effective video models suitable for agent selfies
+ * These are cheaper/faster models ideal for autonomous generation
+ */
+export function getCostEffectiveVideoModels(): string[] {
+  return Object.entries(VIDEO_MODEL_METADATA)
+    .filter(([_, meta]) => meta.costEffective)
+    .map(([id]) => id);
+}
+
 // ============================================================================
 // MODEL SELECTION STORAGE
 // ============================================================================
@@ -1191,15 +1386,28 @@ export function setSelectedModel(type: ModelType, modelId: string): void {
 }
 
 export function getDefaultChatModel(): string {
+  // First: use user's last selection if available
   const selected = getSelectedModel('chat');
   if (selected) return selected;
   
-  const recommended = getRecommendedChatModels();
-  if (recommended.includes('meta-llama/Llama-3.3-70B-Instruct-Turbo')) {
-    return 'meta-llama/Llama-3.3-70B-Instruct-Turbo';
+  // Second: find first free model
+  const freeModels = Object.entries(CHAT_MODEL_METADATA)
+    .filter(([_, meta]) => meta.free)
+    .map(([id]) => id);
+  
+  if (freeModels.length > 0) {
+    return freeModels[0];
   }
   
-  return recommended[0] || 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo';
+  // Third: first recommended model
+  const recommended = getRecommendedChatModels();
+  if (recommended.length > 0) {
+    return recommended[0];
+  }
+  
+  // Last resort: first available model in metadata
+  const allModels = Object.keys(CHAT_MODEL_METADATA);
+  return allModels[0] || 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo-Free';
 }
 
 export function getDefaultImageModel(): string {

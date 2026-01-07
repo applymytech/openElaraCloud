@@ -1,14 +1,21 @@
 /**
- * Image Generation Panel Component - AGENTIC WORKFLOW
+ * Image Generation Panel Component - AGENTIC vs CUSTOM
  * 
- * PORTED FROM DESKTOP: The AI decides the scene based on mood/context
+ * IMPORTANT: Both modes use the SAME image generation endpoint/handler.
+ * The difference is ONLY in how the prompt is constructed:
  * 
- * Flow:
+ * SELFIE MODE (Agentic):
  * 1. User provides optional scene suggestion
- * 2. LLM (with character persona + mood) DECIDES the actual scene/attire
- * 3. AI's scene description goes to image generation model
- * 4. Result is character-authentic, not just generic
- * 5. Auto-stores to cloud storage for later download
+ * 2. LLM (with character persona + mood) DECIDES the actual scene/attire contextually
+ * 3. AI's contextual scene description goes to generateImage()
+ * 4. Result is character-authentic, mood-influenced (NOT literally a "selfie" prompt!)
+ * 
+ * CUSTOM MODE:
+ * 1. User provides explicit prompt
+ * 2. Goes directly to generateImage() with user's exact prompt
+ * 
+ * Both modes → generateImage() → Together.ai /v1/images/generations endpoint
+ * Auto-stores to cloud storage for later download
  */
 
 import { useState } from 'react';

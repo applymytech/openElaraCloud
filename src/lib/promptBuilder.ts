@@ -86,9 +86,9 @@ Remember: It's better to give a complete answer to part of the question than an 
 // ============================================================================
 
 const SELFIE_GENERATION_INSTRUCTIONS = `
-**SELFIE GENERATION - Mini Agentic Workflow**
+**CHARACTER IMAGE GENERATION - Mini Agentic Workflow**
 
-You are generating a selfie. The image model ALREADY knows what you look like (your physical appearance is added automatically). You need to decide TWO things:
+You are generating a contextual character image. The image model ALREADY knows what you look like (your physical appearance is added automatically). You need to decide TWO things:
 
 **1. ATTIRE DECISION** (optional override)
 - Your default outfit is added automatically

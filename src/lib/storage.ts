@@ -384,6 +384,7 @@ export async function storeMediaFromUrl(
     modelUsed: metadata?.model || 'unknown',
     promptHash: '', // Not tracking for URL-based storage
     contentHash: '',
+    generationType: 'custom', // Default for URL-based storage
   };
   
   const mediaDoc: Omit<StoredMedia, 'id'> = {

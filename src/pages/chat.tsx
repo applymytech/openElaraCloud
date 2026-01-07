@@ -5,13 +5,20 @@
  */
 
 import { chat, ChatMessage, isBYOKMode } from "@/lib/api";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import ELARA, { getRandomGreeting, getErrorResponse } from "@/lib/elara";
-import { getDefaultChatModel, CHAT_MODEL_METADATA } from "@/lib/models";
+import { getDefaultChatModel, setSelectedModel, CHAT_MODEL_METADATA, getChatModels, type Model } from "@/lib/models";
 import { getActiveCharacter, Character } from "@/lib/characters";
 import { getMoodTracker, resetMoodTracker, MoodTracker } from "@/lib/mood";
 import { buildChatSystemPrompt, buildContextPrefix } from "@/lib/promptBuilder";
+import { executeCouncilMode, type CouncilResult } from "@/lib/councilMode";
 import { buildRAGContext, ingestConversation } from "@/lib/rag";
+import { 
+  loadContextCanvas, 
+  buildFullCanvasContext, 
+  getCanvasStats,
+  getTokenStats,
+} from "@/lib/contextCanvas";
 import { downloadWithMetadata, type SignedContent } from "@/lib/signing";
 import { type GeneratedImage } from "@/lib/mediaGeneration";
 import { 
@@ -22,12 +29,15 @@ import {
   transcribeAudio, 
   getRecordingState 
 } from "@/lib/stt";
+import { getTrialStatus } from "@/lib/trial";
+import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import dynamic from 'next/dynamic';
 
 // Dynamically import components (avoids SSR issues with localStorage)
+const TrialBanner = dynamic(() => import('@/components/TrialBanner'), { ssr: false });
 const ImageGenPanel = dynamic(() => import('@/components/ImageGenPanel'), { ssr: false });
 const VideoGenPanel = dynamic(() => import('@/components/VideoGenPanel'), { ssr: false });
 const CharacterEditor = dynamic(() => import('@/components/CharacterEditor'), { ssr: false });
@@ -37,6 +47,7 @@ const KnowledgePanel = dynamic(() => import('@/components/KnowledgePanel'), { ss
 const StorageManager = dynamic(() => import('@/components/StorageManager'), { ssr: false });
 const PowerKnowledge = dynamic(() => import('@/components/PowerKnowledge'), { ssr: false });
 const FileConverter = dynamic(() => import('@/components/FileConverter'), { ssr: false });
+const ContextCanvas = dynamic(() => import('@/components/ContextCanvas'), { ssr: false });
 
 // Extended message type to support images and thinking
 interface ChatMessageWithMedia extends ChatMessage {
@@ -58,6 +69,8 @@ export default function Chat() {
   const [byokMode, setByokMode] = useState(false);
   const [character, setCharacter] = useState<Character | null>(null);
   const [currentModel, setCurrentModel] = useState<string>('');
+  const [availableChatModels, setAvailableChatModels] = useState<Model[]>([]);
+  const [showModelSelector, setShowModelSelector] = useState(false);
   const [showImageGen, setShowImageGen] = useState(false);
   const [showVideoGen, setShowVideoGen] = useState(false);
   const [showCharacterEditor, setShowCharacterEditor] = useState(false);
@@ -70,22 +83,40 @@ export default function Chat() {
   const [showStorageManager, setShowStorageManager] = useState(false);
   const [showPowerKnowledge, setShowPowerKnowledge] = useState(false);
   const [showFileConverter, setShowFileConverter] = useState(false);
+  const [showContextCanvas, setShowContextCanvas] = useState(false);
+  const [canvasTokenCount, setCanvasTokenCount] = useState(0);
   const [ctrlEnterSend, setCtrlEnterSend] = useState(true);
   const [moodEmoji, setMoodEmoji] = useState('😊');
   const [moodText, setMoodText] = useState('good, engaged');
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [userDisplayName, setUserDisplayName] = useState<string>('User');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       setLoading(false);
       if (!user) {
         router.push("/");
+      } else {
+        // Load display name from Firestore profile
+        try {
+          const userRef = doc(db, "users", user.uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const profile = userSnap.data();
+            setUserDisplayName(profile.displayName || user.email?.split('@')[0] || 'User');
+          } else {
+            setUserDisplayName(user.email?.split('@')[0] || 'User');
+          }
+        } catch (err) {
+          console.warn('Failed to load user profile:', err);
+          setUserDisplayName(user.email?.split('@')[0] || 'User');
+        }
       }
     });
     
@@ -97,6 +128,19 @@ export default function Chat() {
     
     // Load current model selection
     setCurrentModel(getDefaultChatModel());
+    
+    // Load available chat models from API
+    getChatModels().then(models => {
+      if (models.length > 0) {
+        setAvailableChatModels(models);
+      }
+    }).catch(err => console.warn('Failed to load chat models:', err));
+    
+    // Load Context Canvas state
+    loadContextCanvas().then(() => {
+      const stats = getTokenStats();
+      setCanvasTokenCount(stats.usedTokens);
+    }).catch(err => console.warn('Failed to load context canvas:', err));
     
     // Check AI disclaimer
     if (typeof window !== 'undefined') {
@@ -283,6 +327,46 @@ export default function Chat() {
     }
   };
 
+  /**
+   * Detect if user is requesting a selfie or video from the AI character
+   * Must be explicit requests like "send me a pic" or "send me a video"
+   */
+  const detectMediaRequest = (text: string): 'selfie' | 'video' | null => {
+    const normalized = text.toLowerCase().trim();
+    
+    // Selfie patterns - must be explicit requests
+    const selfiePatterns = [
+      /send\s+(?:me\s+)?(?:a\s+)?(?:pic|picture|photo|selfie|image)/i,
+      /(?:take|snap|get)\s+(?:me\s+)?(?:a\s+)?(?:pic|picture|photo|selfie)/i,
+      /(?:can\s+(?:i\s+)?(?:get|have|see)\s+)?(?:a\s+)?(?:pic|picture|photo|selfie)\s+(?:of\s+)?(?:you|yourself)/i,
+      /show\s+me\s+(?:a\s+)?(?:pic|picture|photo|selfie)/i,
+      /(?:want|like)\s+(?:to\s+)?(?:see\s+)?(?:a\s+)?(?:pic|picture|photo|selfie)\s+(?:of\s+)?you/i,
+    ];
+    
+    // Video patterns - must be explicit requests
+    const videoPatterns = [
+      /send\s+(?:me\s+)?(?:a\s+)?video/i,
+      /(?:take|record|make|get)\s+(?:me\s+)?(?:a\s+)?video/i,
+      /(?:can\s+(?:i\s+)?(?:get|have|see)\s+)?(?:a\s+)?video\s+(?:of\s+)?(?:you|yourself)/i,
+      /show\s+me\s+(?:a\s+)?video/i,
+      /(?:want|like)\s+(?:to\s+)?(?:see\s+)?(?:a\s+)?video\s+(?:of\s+)?you/i,
+    ];
+    
+    for (const pattern of selfiePatterns) {
+      if (pattern.test(normalized)) {
+        return 'selfie';
+      }
+    }
+    
+    for (const pattern of videoPatterns) {
+      if (pattern.test(normalized)) {
+        return 'video';
+      }
+    }
+    
+    return null;
+  };
+
   const handleSend = async () => {
     if (!input.trim() || sending) return;
 
@@ -296,6 +380,13 @@ export default function Chat() {
     const filesToProcess = [...attachedFiles];
     setAttachedFiles([]);
 
+    // Check for Council Mode trigger
+    const isCouncilMode = currentInput.toLowerCase().startsWith('[council mode]') ||
+                          currentInput.toLowerCase().startsWith('[council]');
+    
+    // Check for media request (selfie/video) - LLM tool invocation
+    const mediaRequest = detectMediaRequest(currentInput);
+
     try {
       // Get mood tracker and update from user message
       const moodTracker = getMoodTracker();
@@ -305,14 +396,91 @@ export default function Chat() {
         : userMessage.content.find(p => p.type === 'text')?.text || '';
       moodTracker.updateFromUserMessage(messageText);
       
-      // Build structured system prompt (from desktop promptConstants.js)
+      // Get active character
       const activeChar = character || getActiveCharacter();
+
+      // ================== COUNCIL MODE ==================
+      if (isCouncilMode) {
+        // Strip the council mode prefix from the question
+        const question = currentInput
+          .replace(/^\[council\s*mode\]\s*/i, '')
+          .replace(/^\[council\]\s*/i, '')
+          .trim() || 'What are your thoughts?';
+
+        try {
+          const councilResult = await executeCouncilMode({
+            userQuestion: question,
+            conversationHistory: messages,
+          });
+
+          // Build a rich response with perspectives
+          let councilResponse = '';
+          
+          if (councilResult.perspectives.length > 0) {
+            councilResponse += '🏛️ **Council of Wisdom Perspectives:**\n\n';
+            for (const p of councilResult.perspectives) {
+              if (p.success) {
+                councilResponse += `**${p.persona}** _(${p.role})_:\n${p.answer}\n\n`;
+              }
+            }
+            councilResponse += '---\n\n';
+            councilResponse += `**${councilResult.leadConsultant}'s Synthesis:**\n${councilResult.synthesis}`;
+          } else {
+            councilResponse = councilResult.synthesis || 'The council could not reach a consensus.';
+          }
+
+          const assistantMessage: ChatMessageWithMedia = {
+            role: "assistant",
+            content: councilResponse,
+            thinking: councilResult.thinking,
+          };
+
+          setMessages((prev) => [...prev, assistantMessage]);
+        } catch (e) {
+          console.error('[Council Mode] Error:', e);
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: "The Council of Wisdom is unavailable at the moment. Please try again." },
+          ]);
+        }
+        
+        setSending(false);
+        return; // Exit early - council mode handled
+      }
+
+      // ================== MEDIA REQUEST (SELFIE/VIDEO) ==================
+      if (mediaRequest) {
+        // User requested a selfie or video through natural language
+        // Show an acknowledgment message, then trigger the generation panel
+        const mediaAck: ChatMessageWithMedia = {
+          role: "assistant",
+          content: mediaRequest === 'selfie'
+            ? `📸 Sure! Let me take a selfie for you...`
+            : `🎬 Of course! Let me create a video for you...`,
+        };
+        setMessages((prev) => [...prev, mediaAck]);
+        
+        // Small delay for user to see the message, then open the panel
+        setTimeout(() => {
+          if (mediaRequest === 'selfie') {
+            setShowImageGen(true);
+          } else {
+            setShowVideoGen(true);
+          }
+        }, 500);
+        
+        setSending(false);
+        return; // Exit early - media request handled
+      }
+
+      // ================== REGULAR CHAT ==================
+      // Build structured system prompt (from desktop promptConstants.js)
       
       // Get emotional context from mood tracker
       const moodContext = moodTracker.getPromptContext();
       
       const systemPrompt = buildChatSystemPrompt({
-        userName: user?.displayName || 'User',
+        userName: userDisplayName,
         character: activeChar,
         emotionalContext: moodContext || null,
         outputTokenLimit: 2048, // Default token limit
@@ -341,13 +509,30 @@ export default function Chat() {
         }
       }
       
-      // Build the enriched user message with RAG context AND attached files
+      // Build Context Canvas content (persistent documents with ZERO truncation)
+      let canvasContext = '';
+      try {
+        await loadContextCanvas();
+        const canvasResult = buildFullCanvasContext();
+        if (canvasResult.fileCount > 0) {
+          canvasContext = canvasResult.content;
+          setCanvasTokenCount(canvasResult.tokenCount);
+          console.log(`[Chat] Context Canvas: ${canvasResult.fileCount} files, ~${canvasResult.tokenCount} tokens`);
+        }
+      } catch (e) {
+        console.warn('[Chat] Context Canvas load failed (continuing without):', e);
+      }
+      
+      // Build the enriched user message with Context Canvas + RAG context + attached files
       const contextPrefix = buildContextPrefix({ 
         ragContext,
         attachedFiles: processedFiles.length > 0 ? processedFiles : undefined,
       });
-      const enrichedContent = contextPrefix 
-        ? contextPrefix + messageText 
+      
+      // Combine: Canvas (persistent) + Context Prefix (RAG + attachments) + User Message
+      const fullContext = canvasContext + contextPrefix;
+      const enrichedContent = fullContext 
+        ? fullContext + messageText 
         : messageText;
       
       const enrichedUserMessage: ChatMessage = { 
@@ -487,39 +672,24 @@ export default function Chat() {
 
   // Current character name (fallback to ELARA)
   const charName = character?.name || ELARA.NAME;
-  const charIcon = character?.iconEmoji || '✧';
   const charIconPath = character?.iconPath || '/characters/icon_elara.png';
 
-  // Helper to render avatar (image with emoji fallback)
+  // Helper to render avatar (always uses image - no emoji fallback)
   const renderAvatar = (size: 'sm' | 'md' | 'lg' = 'md') => {
     const sizes = {
-      sm: { width: 28, height: 28, fontSize: 14 },
-      md: { width: 40, height: 40, fontSize: 20 },
-      lg: { width: 80, height: 80, fontSize: 40 },
+      sm: { width: 28, height: 28 },
+      md: { width: 40, height: 40 },
+      lg: { width: 80, height: 80 },
     };
     const s = sizes[size];
     
-    if (charIconPath) {
-      return (
-        <img 
-          src={charIconPath} 
-          alt={charName}
-          className="elara-avatar-img"
-          style={{ width: s.width, height: s.height, borderRadius: '50%', objectFit: 'cover' }}
-          onError={(e) => {
-            // Fallback to emoji if image fails
-            const target = e.target as HTMLImageElement;
-            target.style.display = 'none';
-            target.nextElementSibling?.classList.remove('hidden');
-          }}
-        />
-      );
-    }
-    
     return (
-      <div className="elara-avatar" style={{ width: s.width, height: s.height, fontSize: s.fontSize }}>
-        {charIcon}
-      </div>
+      <img 
+        src={charIconPath} 
+        alt={charName}
+        className="elara-avatar-img"
+        style={{ width: s.width, height: s.height, borderRadius: '50%', objectFit: 'cover' }}
+      />
     );
   };
 
@@ -535,24 +705,21 @@ export default function Chat() {
   }
 
   return (
-    <div className="chat-container">
-      {/* AI Disclaimer Modal */}
-      {showDisclaimer && (
-        <div className="disclaimer-modal">
-          <div className="disclaimer-content">
-            <h2>⚠️ AI Content Disclosure</h2>
-            
-            <div className="disclaimer-warning">
-              <p className="warning-title">🔞 Age Requirement: 18+</p>
-              <p>This application is intended for adults only. By continuing, you confirm you are at least 18 years of age.</p>
-            </div>
+    <>
+      <TrialBanner />
+      <div className="chat-container">
+        {/* AI Disclaimer Modal */}
+        {showDisclaimer && (
+          <div className="disclaimer-modal">
+            <div className="disclaimer-content">
+              <h2>⚠️ AI Content Disclosure</h2>
 
-            <h3>This Application Generates AI Content</h3>
-            <p>
-              All text, images, video, and audio outputs are produced by <strong>third-party artificial intelligence services</strong>, not by Apply My Tech.
-            </p>
-            <p>
-              OpenElara is a <strong>"Bring Your Own Key" (BYOK) client</strong>—the app provides the interface, but the AI "intelligence" comes from external providers via your own API keys.
+              <h3>This Application Generates AI Content</h3>
+              <p>
+                All text, images, video, and audio outputs are produced by <strong>third-party artificial intelligence services</strong>, not by Apply My Tech.
+              </p>
+              <p>
+                OpenElara is a <strong>"Bring Your Own Key" (BYOK) client</strong>—the app provides the interface, but the AI "intelligence" comes from external providers via your own API keys.
             </p>
 
             <h3>You Are Responsible For:</h3>
@@ -563,9 +730,9 @@ export default function Chat() {
               <li>Complying with the terms of service of your chosen AI providers</li>
             </ul>
 
-            <h3>Unmoderated Content</h3>
+            <h3>Content Guidelines</h3>
             <p>
-              This application does <strong>not filter or moderate</strong> AI-generated content. Outputs may include mature themes depending on your prompts and the AI providers you use.
+              This application does <strong>not filter or moderate</strong> AI-generated content. The quality and appropriateness of outputs depend on your prompts and the AI providers you use.
             </p>
 
             <div className="disclaimer-accept">
@@ -573,7 +740,7 @@ export default function Chat() {
                 className="nexus-btn nexus-btn-primary"
                 onClick={handleAcceptDisclaimer}
               >
-                I am 18+ and I understand this application generates AI content
+                I understand this application generates AI content
               </button>
             </div>
           </div>
@@ -597,7 +764,7 @@ export default function Chat() {
       {/* Knowledge Base Panel */}
       {showKnowledgePanel && (
         <div className="modal-overlay" onClick={() => setShowKnowledgePanel(false)}>
-          <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', width: '90%', maxHeight: '85vh' }}>
+          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
             <KnowledgePanel onClose={() => setShowKnowledgePanel(false)} />
           </div>
         </div>
@@ -606,7 +773,7 @@ export default function Chat() {
       {/* Storage Manager Panel */}
       {showStorageManager && (
         <div className="modal-overlay" onClick={() => setShowStorageManager(false)}>
-          <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px', width: '90%', maxHeight: '80vh' }}>
+          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
             <StorageManager onClose={() => setShowStorageManager(false)} />
           </div>
         </div>
@@ -623,6 +790,17 @@ export default function Chat() {
       <FileConverter
         isOpen={showFileConverter}
         onClose={() => setShowFileConverter(false)}
+      />
+
+      {/* Context Canvas - Persistent Documents */}
+      <ContextCanvas
+        isOpen={showContextCanvas}
+        onClose={() => {
+          setShowContextCanvas(false);
+          // Update token count when closing
+          const stats = getTokenStats();
+          setCanvasTokenCount(stats.usedTokens);
+        }}
       />
 
       {/* Hidden file input */}
@@ -648,8 +826,10 @@ export default function Chat() {
             </button>
             {showFileMenu && (
               <div className="menu-dropdown">
+                <button className="menu-option" onClick={() => { handleNewChat(); setShowFileMenu(false); }}>✨ New Chat</button>
                 <button className="menu-option" onClick={handleClearHistory}>🗑️ Clear Chat History</button>
                 <button className="menu-option" onClick={handleExportChat}>💾 Export Chat</button>
+                <button className="menu-option" onClick={() => { setShowContextCanvas(true); setShowFileMenu(false); }}>📌 Context Canvas</button>
                 <button className="menu-option" onClick={() => { setShowPromptManager(true); setShowFileMenu(false); }}>📋 Prompt Manager</button>
                 <button className="menu-option" onClick={() => { setShowKnowledgePanel(true); setShowFileMenu(false); }}>🧠 Knowledge Base</button>
                 <button className="menu-option" onClick={() => { setShowStorageManager(true); setShowFileMenu(false); }}>💾 Storage Manager</button>
@@ -700,15 +880,11 @@ export default function Chat() {
             title="Switch Character"
           >
             <span className="persona-toggle-avatar">
-              {charIconPath ? (
-                <img 
-                  src={charIconPath} 
-                  alt={charName}
-                  className="persona-toggle-img"
-                />
-              ) : (
-                <span className="persona-toggle-emoji">{charIcon}</span>
-              )}
+              <img 
+                src={charIconPath} 
+                alt={charName}
+                className="persona-toggle-img"
+              />
             </span>
             <span className="persona-toggle-name">{charName}</span>
             <span className="persona-toggle-arrow">▼</span>
@@ -743,10 +919,13 @@ export default function Chat() {
 
         <div className="ribbon-separator">•</div>
 
-        <div className="ribbon-stat">
+        <div className="ribbon-stat ribbon-model-selector" onClick={() => setShowModelSelector(true)}>
           <span className="ribbon-icon">🤖</span>
           <span className="ribbon-label">Model:</span>
-          <span className="ribbon-value">{currentModel ? getModelDisplayName(currentModel) : 'Loading...'}</span>
+          <span className="ribbon-value ribbon-model-value">
+            {currentModel ? getModelDisplayName(currentModel) : 'Select Model'}
+            <span className="model-dropdown-arrow">▼</span>
+          </span>
         </div>
 
         {attachedFiles.length > 0 && (
@@ -758,6 +937,22 @@ export default function Chat() {
             </div>
           </>
         )}
+
+        {/* Context Canvas Indicator */}
+        <div className="ribbon-separator">•</div>
+        <div 
+          className={`ribbon-stat ribbon-canvas ${canvasTokenCount > 0 ? 'active' : ''}`}
+          onClick={() => setShowContextCanvas(true)}
+          title="Open Context Canvas - Pin documents for persistent AI context"
+        >
+          <span className="ribbon-icon">📌</span>
+          <span className="ribbon-label">Canvas:</span>
+          <span className="ribbon-value">
+            {canvasTokenCount > 0 
+              ? `${Math.round(canvasTokenCount / 1000)}k tokens` 
+              : 'Empty'}
+          </span>
+        </div>
       </div>
 
       {/* Modal Overlays */}
@@ -767,6 +962,9 @@ export default function Chat() {
             <ImageGenPanel 
               onClose={() => setShowImageGen(false)}
               onImageGenerated={handleImageGenerated}
+              conversationContext={messages.slice(-5).map(m => 
+                `${m.role}: ${typeof m.content === 'string' ? m.content : '[attachment]'}`
+              ).join('\n')}
             />
           </div>
         </div>
@@ -777,7 +975,75 @@ export default function Chat() {
           <div onClick={(e) => e.stopPropagation()}>
             <VideoGenPanel 
               onClose={() => setShowVideoGen(false)}
+              conversationContext={messages.slice(-5).map(m => 
+                `${m.role}: ${typeof m.content === 'string' ? m.content : '[attachment]'}`
+              ).join('\n')}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Model Selector Modal */}
+      {showModelSelector && (
+        <div className="modal-overlay" onClick={() => setShowModelSelector(false)}>
+          <div className="model-selector-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>🤖 Select Chat Model</h2>
+              <button className="modal-close-btn" onClick={() => setShowModelSelector(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="model-selector-grid">
+                {availableChatModels.length > 0 ? (
+                  availableChatModels.map(model => (
+                    <button
+                      key={model.id}
+                      className={`model-card ${model.id === currentModel ? 'active' : ''}`}
+                      onClick={() => {
+                        setCurrentModel(model.id);
+                        setSelectedModel('chat', model.id);
+                        setShowModelSelector(false);
+                      }}
+                    >
+                      <div className="model-card-header">
+                        <span className="model-card-name">{model.metadata?.displayName || model.displayName || model.id.split('/').pop()}</span>
+                        {model.id === currentModel && <span className="model-badge current">✓</span>}
+                      </div>
+                      <div className="model-card-badges">
+                        {(model.metadata as any)?.free && <span className="model-badge free">FREE</span>}
+                        {(model.metadata as any)?.recommended && <span className="model-badge rec">★ RECOMMENDED</span>}
+                      </div>
+                      {model.metadata?.description && (
+                        <div className="model-card-description">{model.metadata.description}</div>
+                      )}
+                    </button>
+                  ))
+                ) : (
+                  Object.entries(CHAT_MODEL_METADATA).map(([id, meta]) => (
+                    <button
+                      key={id}
+                      className={`model-card ${id === currentModel ? 'active' : ''}`}
+                      onClick={() => {
+                        setCurrentModel(id);
+                        setSelectedModel('chat', id);
+                        setShowModelSelector(false);
+                      }}
+                    >
+                      <div className="model-card-header">
+                        <span className="model-card-name">{meta.displayName}</span>
+                        {id === currentModel && <span className="model-badge current">✓</span>}
+                      </div>
+                      <div className="model-card-badges">
+                        {meta.free && <span className="model-badge free">FREE</span>}
+                        {meta.recommended && <span className="model-badge rec">★ RECOMMENDED</span>}
+                      </div>
+                      {meta.description && (
+                        <div className="model-card-description">{meta.description}</div>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -787,19 +1053,15 @@ export default function Chat() {
         {messages.length === 0 && (
           <div className="welcome-container">
             <div className="welcome-avatar">
-              {charIconPath ? (
-                <img 
-                  src={charIconPath} 
-                  alt={charName}
-                  className="elara-avatar-img elara-avatar-lg"
-                />
-              ) : (
-                <div className="elara-avatar elara-avatar-lg">{charIcon}</div>
-              )}
+              <img 
+                src={charIconPath} 
+                alt={charName}
+                className="elara-avatar-img elara-avatar-lg"
+              />
               <div className="elara-status-indicator" />
             </div>
             <h2 className="welcome-title">
-              Hey{user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""}! 👋
+              Hey{userDisplayName && userDisplayName !== 'User' ? `, ${userDisplayName.split(" ")[0]}` : ""}! 👋
             </h2>
             <p className="welcome-subtitle">
               I'm {charName}. What's on your mind today?
@@ -836,6 +1098,13 @@ export default function Chat() {
               >
                 💻 Write code
               </button>
+              <button 
+                className="quick-prompt council-prompt"
+                onClick={() => setInput("[Council Mode] ")}
+                title="Consult the Council of Wisdom - all personas weigh in"
+              >
+                🏛️ Ask the Council
+              </button>
             </div>
           </div>
         )}
@@ -847,15 +1116,11 @@ export default function Chat() {
           >
             {msg.role === "assistant" && (
               <div className="message-avatar">
-                {charIconPath ? (
-                  <img 
-                    src={charIconPath} 
-                    alt={charName}
-                    className="message-avatar-img"
-                  />
-                ) : (
-                  <div className="elara-avatar" style={{ width: 28, height: 28, fontSize: 14 }}>{charIcon}</div>
-                )}
+                <img 
+                  src={charIconPath} 
+                  alt={charName}
+                  className="message-avatar-img"
+                />
               </div>
             )}
             <div className="message-content">
@@ -908,15 +1173,11 @@ export default function Chat() {
         {sending && (
           <div className="chat-message chat-message-ai">
             <div className="message-avatar">
-              {charIconPath ? (
-                <img 
-                  src={charIconPath} 
-                  alt={charName}
-                  className="message-avatar-img"
-                />
-              ) : (
-                <div className="elara-avatar" style={{ width: 28, height: 28, fontSize: 14 }}>{charIcon}</div>
-              )}
+              <img 
+                src={charIconPath} 
+                alt={charName}
+                className="message-avatar-img"
+              />
             </div>
             <div className="message-content">
               <div className="nexus-typing-indicator">
@@ -946,43 +1207,32 @@ export default function Chat() {
           </div>
         )}
 
-        {/* Keyboard Shortcut Toggle */}
-        <div className="keyboard-shortcut-container">
-          <input 
-            type="checkbox" 
-            id="ctrl-enter-toggle" 
-            checked={ctrlEnterSend}
-            onChange={(e) => handleCtrlEnterToggle(e.target.checked)}
-          />
-          <label htmlFor="ctrl-enter-toggle">Ctrl + Enter to Send</label>
-        </div>
-
         <div className="chat-form">
-          {/* Left Buttons Stack */}
-          <div className="input-buttons-stack">
-            <button 
-              type="button" 
-              className="input-btn-compact"
+          {/* Quick Action Buttons - Selfie, Video & Context Canvas */}
+          <div className="quick-action-buttons">
+            <button
+              type="button"
+              className="quick-action-btn selfie-btn"
+              title={`Request a selfie from ${charName}`}
               onClick={() => setShowImageGen(true)}
-              title="Generate Image / Selfie"
             >
-              📸 Selfie
+              📸
             </button>
-            <button 
-              type="button" 
-              className="input-btn-compact"
+            <button
+              type="button"
+              className="quick-action-btn video-btn"
+              title={`Request a video from ${charName}`}
               onClick={() => setShowVideoGen(true)}
-              title="Generate Video"
             >
-              🎬 Video
+              🎬
             </button>
-            <button 
-              type="button" 
-              className="input-btn-compact"
-              onClick={handleNewChat}
-              title="Start New Chat"
+            <button
+              type="button"
+              className={`quick-action-btn canvas-btn ${canvasTokenCount > 0 ? 'active' : ''}`}
+              title="Context Canvas - Pin documents"
+              onClick={() => setShowContextCanvas(true)}
             >
-              ✨ New
+              📌
             </button>
           </div>
 
@@ -996,7 +1246,7 @@ export default function Chat() {
             placeholder={ctrlEnterSend 
               ? `Message ${charName}... (Ctrl+Enter to send)` 
               : `Message ${charName}... (Enter to send)`}
-            rows={1}
+            rows={3}
           />
 
           {/* Send Button with Attachments and Voice */}
@@ -1040,6 +1290,16 @@ export default function Chat() {
             >
               {sending ? "..." : "Send"}
             </button>
+            {/* Keyboard Shortcut Toggle */}
+            <div className="keyboard-shortcut-container">
+              <input 
+                type="checkbox" 
+                id="ctrl-enter-toggle" 
+                checked={ctrlEnterSend}
+                onChange={(e) => handleCtrlEnterToggle(e.target.checked)}
+              />
+              <label htmlFor="ctrl-enter-toggle">⌨️ Ctrl+Enter</label>
+            </div>
           </div>
         </div>
       </div>
@@ -1050,6 +1310,7 @@ export default function Chat() {
           flex-direction: column;
           height: 100vh;
           background: var(--main-bg-color);
+          overflow: hidden;
         }
 
         /* ============== AI DISCLAIMER MODAL ============== */
@@ -1198,6 +1459,8 @@ export default function Chat() {
           font-size: 12px;
           flex-shrink: 0;
           overflow-x: auto;
+          position: relative;
+          z-index: 100;
         }
 
         .ribbon-stat {
@@ -1253,6 +1516,169 @@ export default function Chat() {
         .ribbon-value {
           color: #f0f4f8;
           font-weight: 600;
+        }
+
+        /* ============== MODEL SELECTOR ============== */
+        .ribbon-model-selector {
+          cursor: pointer;
+          padding: 4px 8px;
+          border-radius: 6px;
+          transition: all 0.2s ease;
+        }
+
+        .ribbon-model-selector:hover {
+          background: rgba(0, 212, 255, 0.1);
+        }
+
+        .ribbon-model-value {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .model-dropdown-arrow {
+          font-size: 10px;
+          opacity: 0.6;
+          transition: transform 0.2s ease;
+        }
+
+        .ribbon-model-selector:hover .model-dropdown-arrow {
+          opacity: 1;
+        }
+
+        .model-selector-modal {
+          background: var(--secondary-bg-color);
+          border: 1px solid var(--glass-border);
+          border-radius: 16px;
+          max-width: 900px;
+          width: 90vw;
+          max-height: 80vh;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .model-selector-modal .modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 24px;
+          border-bottom: 1px solid var(--glass-border);
+        }
+
+        .model-selector-modal .modal-header h2 {
+          margin: 0;
+          color: var(--accent-color);
+          font-size: 1.5rem;
+        }
+
+        .model-selector-modal .modal-close-btn {
+          background: none;
+          border: none;
+          color: var(--secondary-text-color);
+          font-size: 2rem;
+          cursor: pointer;
+          padding: 0;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+
+        .model-selector-modal .modal-close-btn:hover {
+          color: var(--accent-color);
+          transform: scale(1.1);
+        }
+
+        .model-selector-modal .modal-body {
+          padding: 20px;
+          overflow-y: auto;
+        }
+
+        .model-selector-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 16px;
+        }
+
+        .model-card {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          padding: 18px;
+          background: rgba(0, 212, 255, 0.03);
+          border: 2px solid var(--glass-border);
+          border-radius: 12px;
+          color: var(--main-text-color);
+          cursor: pointer;
+          transition: all 0.2s ease;
+          text-align: left;
+        }
+
+        .model-card:hover {
+          background: rgba(0, 212, 255, 0.08);
+          border-color: var(--accent-color);
+          transform: translateY(-2px);
+          box-shadow: 0 4px 16px rgba(0, 212, 255, 0.2);
+        }
+
+        .model-card.active {
+          background: rgba(0, 212, 255, 0.15);
+          border: 2px solid var(--accent-color);
+          box-shadow: 0 0 24px rgba(0, 212, 255, 0.3);
+        }
+
+        .model-card-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
+        .model-card-name {
+          font-weight: 600;
+          font-size: 1rem;
+          color: var(--accent-color);
+          flex: 1;
+        }
+
+        .model-card-badges {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
+        .model-badge {
+          font-size: 0.7rem;
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+
+        .model-badge.free {
+          background: rgba(0, 255, 136, 0.2);
+          color: #00ff88;
+          border: 1px solid rgba(0, 255, 136, 0.3);
+        }
+
+        .model-badge.rec {
+          background: rgba(255, 193, 7, 0.2);
+          color: #ffc107;
+          border: 1px solid rgba(255, 193, 7, 0.3);
+        }
+
+        .model-badge.current {
+          background: rgba(0, 212, 255, 0.3);
+          color: var(--accent-color);
+          border: 1px solid var(--accent-color);
+        }
+
+        .model-card-description {
+          font-size: 0.85rem;
+          color: var(--secondary-text-color);
+          line-height: 1.5;
         }
 
         /* ============== PERSONA TOGGLE ============== */
@@ -1316,6 +1742,13 @@ export default function Chat() {
           justify-content: center;
           z-index: 1000;
           backdrop-filter: blur(4px);
+        }
+
+        .modal-container {
+          width: 95%;
+          max-width: 1200px;
+          max-height: 90vh;
+          overflow: auto;
         }
 
         /* ============== CHAT MESSAGES ============== */
@@ -1542,6 +1975,18 @@ export default function Chat() {
           transform: translateY(-2px);
         }
 
+        .council-prompt {
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(0, 212, 255, 0.1) 100%);
+          border: 1px solid rgba(139, 92, 246, 0.4);
+          font-weight: 600;
+        }
+
+        .council-prompt:hover {
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(0, 212, 255, 0.2) 100%);
+          border-color: rgba(139, 92, 246, 0.6);
+          box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+        }
+
         /* ============== DESKTOP-STYLE INPUT AREA ============== */
         .chat-input-area {
           padding: 12px 16px;
@@ -1591,20 +2036,95 @@ export default function Chat() {
         .keyboard-shortcut-container {
           display: flex;
           align-items: center;
-          gap: 8px;
-          margin-bottom: 10px;
-          font-size: 12px;
+          gap: 6px;
+          margin-top: 8px;
+          font-size: 10px;
           color: var(--secondary-text-color);
         }
 
         .keyboard-shortcut-container input[type="checkbox"] {
           accent-color: var(--accent-color);
+          cursor: pointer;
+        }
+
+        .keyboard-shortcut-container label {
+          cursor: pointer;
+          user-select: none;
         }
 
         .chat-form {
           display: flex;
           gap: 12px;
           align-items: flex-end;
+        }
+
+        /* Quick Action Buttons - Selfie & Video */
+        .quick-action-buttons {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .quick-action-btn {
+          width: 40px;
+          height: 40px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--glass-bg-secondary);
+          border: 1px solid var(--glass-border);
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 20px;
+          transition: all 0.2s ease;
+        }
+
+        .quick-action-btn:hover {
+          transform: scale(1.1);
+        }
+
+        .quick-action-btn.selfie-btn:hover {
+          background: rgba(236, 72, 153, 0.2);
+          border-color: #ec4899;
+          box-shadow: 0 0 12px rgba(236, 72, 153, 0.3);
+        }
+
+        .quick-action-btn.video-btn:hover {
+          background: rgba(139, 92, 246, 0.2);
+          border-color: #8b5cf6;
+          box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
+        }
+
+        .quick-action-btn.canvas-btn:hover {
+          background: rgba(0, 212, 255, 0.2);
+          border-color: #00d4ff;
+          box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
+        }
+
+        .quick-action-btn.canvas-btn.active {
+          background: rgba(0, 212, 255, 0.15);
+          border-color: rgba(0, 212, 255, 0.5);
+        }
+
+        /* Context Canvas Ribbon Indicator */
+        .ribbon-canvas {
+          cursor: pointer;
+          padding: 4px 8px;
+          border-radius: 6px;
+          transition: all 0.2s ease;
+        }
+
+        .ribbon-canvas:hover {
+          background: rgba(0, 212, 255, 0.1);
+        }
+
+        .ribbon-canvas.active {
+          background: rgba(0, 212, 255, 0.15);
+          border: 1px solid rgba(0, 212, 255, 0.3);
+        }
+
+        .ribbon-canvas.active .ribbon-value {
+          color: #00d4ff;
         }
 
         .input-buttons-stack {
@@ -1800,5 +2320,6 @@ export default function Chat() {
         }
       `}</style>
     </div>
+    </>
   );
 }
