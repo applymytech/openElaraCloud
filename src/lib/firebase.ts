@@ -2,28 +2,61 @@ import { getApps, initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { getFirebaseConfig, validateFirebaseConfig, type FirebaseConfig } from "./firebaseConfig";
 
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
-};
+// Get Firebase config (no .env.local required!)
+const firebaseConfig = getFirebaseConfig();
+
+// Validate configuration
+const validation = validateFirebaseConfig(firebaseConfig);
+if (!validation.valid) {
+  console.error('[Firebase] Configuration error:', validation.error);
+  if (validation.setupInstructions) {
+    console.error('[Firebase] Setup instructions:\n', validation.setupInstructions);
+  }
+}
 
 // Initialize Firebase (only once)
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+// Note: We allow initialization even with invalid config to prevent crashes
+// Pages will handle the missing config gracefully with UI messages
+let app: any = null;
+let auth: any = null;
+let db: any = null;
+let storage: any = null;
+let googleProvider: any = null;
 
-// Auth
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
+try {
+  if (firebaseConfig) {
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+    auth = getAuth(app);
+    googleProvider = new GoogleAuthProvider();
+    db = getFirestore(app);
+    storage = getStorage(app);
+  } else {
+    console.warn('[Firebase] No configuration found - Firebase services unavailable');
+  }
+} catch (error) {
+  console.error('[Firebase] Initialization failed:', error);
+}
 
-// Firestore
-export const db = getFirestore(app);
-
-// Storage
-export const storage = getStorage(app);
-
+// Export services (may be null if config missing)
+export { auth, googleProvider, db, storage, firebaseConfig };
 export default app;
+
+/**
+ * Check if Firebase is properly configured
+ */
+export function isFirebaseConfigured(): boolean {
+  return firebaseConfig !== null && validation.valid;
+}
+
+/**
+ * Get configuration error details for UI display
+ */
+export function getFirebaseConfigError(): { error: string; setupInstructions?: string } | null {
+  if (validation.valid) return null;
+  return {
+    error: validation.error || 'Unknown configuration error',
+    setupInstructions: validation.setupInstructions,
+  };
+}

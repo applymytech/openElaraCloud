@@ -16,10 +16,21 @@
  * - Exa.ai: Web search (optional)
  */
 
-import { auth } from './firebase';
+import { auth, firebaseConfig } from './firebase';
+import { getFunctionsUrl } from './firebaseConfig';
 import { getAPIKey } from './byok';
 import { getActiveCharacter, type Character } from './characters';
 import { generateMetadata, signImage, type SignedContent } from './signing';
+import { createLogger } from './logger';
+import { 
+  MAX_IMAGE_PROMPT_LENGTH,
+  MAX_VIDEO_PROMPT_LENGTH,
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_VIDEO_MODEL,
+  DEFAULT_IMAGE_WIDTH,
+  DEFAULT_IMAGE_HEIGHT,
+  DEFAULT_IMAGE_STEPS,
+} from './constants';
 import { 
   IMAGE_MODEL_METADATA,
   VIDEO_MODEL_METADATA,
@@ -641,7 +652,8 @@ export async function generateVideo(
     }];
   }
   
-  console.log(`[Video Gen] Creating job with model: ${model}`);
+  const logger = createLogger('MediaGen');
+  logger.debug(`Creating job with model: ${model}`);
   
   // Get Firebase ID token for authentication
   const user = auth.currentUser;
@@ -650,8 +662,13 @@ export async function generateVideo(
   }
   const idToken = await user.getIdToken();
   
+  // Get Functions URL from Firebase config (auto-detects project)
+  const functionsUrl = firebaseConfig ? getFunctionsUrl(firebaseConfig) : null;
+  if (!functionsUrl) {
+    throw new Error('Firebase configuration missing - cannot call Cloud Functions');
+  }
+  
   // STEP 1: Create the video generation JOB via Cloud Function
-  const functionsUrl = process.env.NEXT_PUBLIC_FUNCTIONS_URL || 'https://us-central1-openelaracloud.cloudfunctions.net';
   const createResponse = await fetch(`${functionsUrl}/generateVideo`, {
     method: 'POST',
     headers: {

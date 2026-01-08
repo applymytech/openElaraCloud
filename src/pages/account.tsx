@@ -1568,21 +1568,155 @@ export default function Account() {
         /* Responsive */
         @media (max-width: 768px) {
           .account-main {
+            padding: var(--spacing-sm);
+            padding-bottom: calc(var(--spacing-xl) * 2);
+          }
+
+          .account-container {
+            padding: 0;
+          }
+
+          /* Mobile-specific tab layout */
+          .account-tabs {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            padding-bottom: var(--spacing-sm);
+            margin-bottom: var(--spacing-md);
+          }
+
+          .account-tab {
+            padding: 10px 6px;
+            font-size: 0.8rem;
+            white-space: normal;
+            line-height: 1.2;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          /* Stack content cards */
+          .account-content {
             padding: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
           }
 
           .account-grid,
           .settings-grid,
           .api-keys-grid {
             grid-template-columns: 1fr;
+            gap: var(--spacing-md);
           }
 
+          /* Welcome banner */
+          .welcome-banner {
+            padding: var(--spacing-md);
+          }
+
+          .welcome-banner h1 {
+            font-size: 1.5rem;
+          }
+
+          .welcome-banner p {
+            font-size: 0.9rem;
+          }
+
+          /* Profile section */
+          .profile-display {
+            flex-direction: column;
+            text-align: center;
+          }
+
+          .profile-avatar {
+            margin: 0 auto var(--spacing-sm) auto;
+          }
+
+          /* Card adjustments */
+          .card-header-row {
+            flex-direction: column;
+            gap: var(--spacing-sm);
+            align-items: flex-start;
+          }
+
+          .card-header-row button {
+            width: 100%;
+          }
+
+          /* Character display */
+          .character-display {
+            flex-direction: column;
+            text-align: center;
+          }
+
+          .character-avatar-img,
+          .character-avatar-placeholder {
+            margin: 0 auto var(--spacing-sm) auto;
+          }
+
+          /* API Keys */
+          .api-key-input-group {
+            flex-direction: column;
+          }
+
+          .api-key-input-group button {
+            width: 100%;
+          }
+
+          /* Storage items */
+          .storage-item {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+
+          .storage-actions {
+            width: 100%;
+            display: flex;
+            gap: 8px;
+          }
+
+          .storage-actions button {
+            flex: 1;
+          }
+
+          /* Launch bar */
           .launch-bar {
             flex-direction: column;
+            gap: var(--spacing-md);
           }
 
           .launch-btn {
             width: 100%;
+          }
+
+          /* About section */
+          .about-header {
+            flex-direction: column;
+            text-align: center;
+          }
+
+          .about-logo {
+            margin: 0 auto var(--spacing-sm) auto;
+          }
+        }
+
+        /* Extra small screens */
+        @media (max-width: 480px) {
+          .account-tabs {
+            grid-template-columns: 1fr;
+          }
+
+          .account-tab {
+            min-height: 40px;
+            padding: 8px 6px;
+          }
+
+          .account-main {
+            padding: var(--spacing-xs);
+          }
+
+          .account-content {
+            padding: var(--spacing-sm);
           }
         }
       `}</style>

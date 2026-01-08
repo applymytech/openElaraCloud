@@ -1,6 +1,9 @@
 import "@/styles/globals.css";
 import type { AppProps } from "next/app";
 import { useEffect } from "react";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { auth } from "@/lib/firebase";
+import { ingestSystemManual } from "@/lib/rag";
 
 export default function App({ Component, pageProps }: AppProps) {
   // Register service worker for PWA
@@ -9,15 +12,37 @@ export default function App({ Component, pageProps }: AppProps) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("/sw.js").then(
           (registration) => {
-            console.log("SW registered: ", registration);
+            if (process.env.NODE_ENV === 'development') {
+              console.log("SW registered: ", registration);
+            }
           },
           (err) => {
-            console.log("SW registration failed: ", err);
+            console.error("SW registration failed: ", err);
           }
         );
       });
     }
   }, []);
 
-  return <Component {...pageProps} />;
+  // Auto-ingest system manual into RAG for LLM self-awareness
+  // This runs once per user on first authentication
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user: any) => {
+      if (user) {
+        // Ingest system manual (idempotent - checks if already exists)
+        ingestSystemManual().catch((e) => {
+          console.warn('[App] System manual ingestion failed:', e);
+          // Non-critical, continue anyway
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  return (
+    <ErrorBoundary>
+      <Component {...pageProps} />
+    </ErrorBoundary>
+  );
 }

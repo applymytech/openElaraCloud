@@ -15,9 +15,24 @@ admin.initializeApp();
 // Secret Manager client
 const secretClient = new SecretManagerServiceClient();
 
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/** Cache TTL for Secret Manager secrets (5 minutes) */
+const SECRET_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/** Max requests per minute per user */
+const RATE_LIMIT_PER_MINUTE = 60;
+
+/** Trial enforcement enabled */
+const TRIAL_ENFORCEMENT_ENABLED = true;
+
 // Cache secrets to avoid repeated lookups
 const secretCache: Map<string, { value: string; expiry: number }> = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Rate limiting cache (in-memory, resets on cold start)
+const rateLimitCache: Map<string, { count: number; resetAt: number }> = new Map();
 
 /**
  * Get a secret from Google Secret Manager
@@ -37,7 +52,7 @@ async function getSecret(secretName: string): Promise<string | null> {
     const payload = version.payload?.data?.toString();
     
     if (payload) {
-      secretCache.set(secretName, { value: payload, expiry: Date.now() + CACHE_TTL });
+      secretCache.set(secretName, { value: payload, expiry: Date.now() + SECRET_CACHE_TTL_MS });
       return payload;
     }
   } catch (error) {
@@ -45,6 +60,78 @@ async function getSecret(secretName: string): Promise<string | null> {
   }
   
   return null;
+}
+
+/**
+ * Check if user's trial has expired
+ * Respects manual date changes in Firestore
+ */
+async function checkTrialStatus(userId: string): Promise<{ valid: boolean; error?: string }> {
+  if (!TRIAL_ENFORCEMENT_ENABLED) {
+    return { valid: true };
+  }
+
+  try {
+    const userDoc = await admin.firestore().collection('users').doc(userId).get();
+    
+    if (!userDoc.exists) {
+      return { valid: false, error: 'User profile not found' };
+    }
+
+    const userData = userDoc.data();
+    const trialExpiresAt = userData?.trialExpiresAt;
+
+    if (!trialExpiresAt) {
+      // No trial expiration set - assume valid (admin accounts)
+      return { valid: true };
+    }
+
+    // Convert Firestore Timestamp to Date
+    const expiryDate = trialExpiresAt.toDate ? trialExpiresAt.toDate() : new Date(trialExpiresAt);
+    const now = new Date();
+
+    if (now > expiryDate) {
+      return {
+        valid: false,
+        error: 'Trial expired. Deploy your own instance to continue!',
+      };
+    }
+
+    return { valid: true };
+  } catch (error) {
+    console.error('Trial check failed:', error);
+    // Fail open - don't block users if check fails
+    return { valid: true };
+  }
+}
+
+/**
+ * Rate limiting check
+ * Returns true if request should be blocked
+ */
+function checkRateLimit(userId: string): { blocked: boolean; error?: string } {
+  const now = Date.now();
+  const key = `${userId}:${Math.floor(now / 60000)}`; // Per-minute bucket
+  
+  let entry = rateLimitCache.get(key);
+  
+  if (!entry || entry.resetAt < now) {
+    // New bucket
+    entry = { count: 1, resetAt: now + 60000 };
+    rateLimitCache.set(key, entry);
+    return { blocked: false };
+  }
+  
+  entry.count++;
+  
+  if (entry.count > RATE_LIMIT_PER_MINUTE) {
+    return {
+      blocked: true,
+      error: `Rate limit exceeded. Maximum ${RATE_LIMIT_PER_MINUTE} requests per minute.`,
+    };
+  }
+  
+  return { blocked: false };
 }
 
 /**
@@ -88,6 +175,20 @@ export const aiChat = functions.https.onRequest(async (req, res) => {
   const user = await verifyAuth(req);
   if (!user) {
     res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  // Check trial status (respects manual Firestore changes)
+  const trialStatus = await checkTrialStatus(user.uid);
+  if (!trialStatus.valid) {
+    res.status(403).json({ error: trialStatus.error });
+    return;
+  }
+
+  // Check rate limit
+  const rateLimit = checkRateLimit(user.uid);
+  if (rateLimit.blocked) {
+    res.status(429).json({ error: rateLimit.error });
     return;
   }
 
@@ -166,6 +267,20 @@ export const generateImage = functions.https.onRequest(async (req, res) => {
     return;
   }
 
+  // Check trial status
+  const trialStatus = await checkTrialStatus(user.uid);
+  if (!trialStatus.valid) {
+    res.status(403).json({ error: trialStatus.error });
+    return;
+  }
+
+  // Check rate limit
+  const rateLimit = checkRateLimit(user.uid);
+  if (rateLimit.blocked) {
+    res.status(429).json({ error: rateLimit.error });
+    return;
+  }
+
   const apiKey = await getSecret("TOGETHER_API_KEY");
   if (!apiKey) {
     res.status(500).json({ error: "API key not configured" });
@@ -219,6 +334,20 @@ export const generateVideo = functions.https.onRequest(async (req, res) => {
   const user = await verifyAuth(req);
   if (!user) {
     res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  // Check trial status
+  const trialStatus = await checkTrialStatus(user.uid);
+  if (!trialStatus.valid) {
+    res.status(403).json({ error: trialStatus.error });
+    return;
+  }
+
+  // Check rate limit
+  const rateLimit = checkRateLimit(user.uid);
+  if (rateLimit.blocked) {
+    res.status(429).json({ error: rateLimit.error });
     return;
   }
 
@@ -343,12 +472,12 @@ export const health = functions.https.onRequest(async (req, res) => {
  * 1. This visible layer (easy to read, deters casual fakers)
  * 2. Hidden steganography (cryptographically secure)
  */
-export const signImageMetadata = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
+export const signImageMetadata = functions.https.onCall(async (request) => {
+  if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated');
   }
 
-  const { imageBase64, metadata } = data;
+  const { imageBase64, metadata } = request.data;
   
   if (!imageBase64 || !metadata) {
     throw new functions.https.HttpsError('invalid-argument', 'Missing imageBase64 or metadata');

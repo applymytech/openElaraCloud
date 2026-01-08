@@ -10,6 +10,8 @@
 
 > **⚠️ Adults Only (18+)** — This application provides access to AI capabilities that may generate mature content.
 
+> **✅ Production Ready** — Hardened with error boundaries, rate limiting, input validation, and graceful error handling. [See what's new →](PRODUCTION_HARDENING.md)
+
 **Live Demo:** [https://openelaracloud.web.app](https://openelaracloud.web.app) *(7-day trial)*
 
 ---

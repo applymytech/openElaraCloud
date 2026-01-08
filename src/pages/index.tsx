@@ -12,7 +12,7 @@
  * - After trial: Deploy your own instance!
  */
 
-import { auth, db } from "@/lib/firebase";
+import { auth, db, isFirebaseConfigured, getFirebaseConfigError } from "@/lib/firebase";
 import { 
   onAuthStateChanged, 
   signInWithPopup,
@@ -24,8 +24,14 @@ import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import ELARA from "@/lib/elara";
 import { initializeTrial, getTrialStatus, isTrialExpired } from "@/lib/trial";
+import { DEFAULT_STORAGE_QUOTA_GB, DEFAULT_CHAT_MODEL } from "@/lib/constants";
+import { handleUIError } from "@/lib/errorHandler";
+import { createLogger } from "@/lib/logger";
+import dynamic from 'next/dynamic';
 
-const DEFAULT_QUOTA_GB = 2;
+const FirebaseConfigError = dynamic(() => import('@/components/FirebaseConfigError'), { ssr: false });
+
+const logger = createLogger('Login');
 
 export default function Login() {
   const router = useRouter();
@@ -34,7 +40,23 @@ export default function Login() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showByokInfo, setShowByokInfo] = useState(false);
 
+  // Check Firebase configuration first
+  const configError = getFirebaseConfigError();
+  if (configError) {
+    return (
+      <FirebaseConfigError 
+        error={configError.error} 
+        setupInstructions={configError.setupInstructions} 
+      />
+    );
+  }
+
   useEffect(() => {
+    if (!isFirebaseConfigured()) {
+      logger.error('Firebase not configured');
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         // Check if trial expired
@@ -77,12 +99,12 @@ export default function Login() {
         createdAt: serverTimestamp(),
         lastLoginAt: serverTimestamp(),
         quota: {
-          storageLimitGB: DEFAULT_QUOTA_GB,
+          storageLimitGB: DEFAULT_STORAGE_QUOTA_GB,
           storageUsedBytes: 0,
         },
         settings: {
           theme: "nexus",
-          defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+          defaultModel: DEFAULT_CHAT_MODEL,
         },
         // Trial fields
         trialCreatedAt: serverTimestamp(),

@@ -62,6 +62,9 @@ export interface RAGDocument {
     source?: string;         // Original filename or 'conversation'
     conversationId?: string; // For conversation chunks
     tags?: string[];
+    version?: string;        // For system manual versioning
+    permanent?: boolean;     // Flag for UI (system docs)
+    system?: boolean;        // System-generated content
   };
 }
 
@@ -703,6 +706,86 @@ export async function getRAGStats(): Promise<{
   }
   
   return stats;
+}
+
+// ============================================================================
+// SYSTEM MANUAL AUTO-INGESTION
+// ============================================================================
+
+/**
+ * Ingest the system user manual into RAG for LLM self-awareness
+ * This should be called once per user on first login/initialization
+ * Gives Elara knowledge about herself and the app capabilities
+ */
+export async function ingestSystemManual(): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) {
+    console.warn('[RAG] Cannot ingest system manual: User not authenticated');
+    return;
+  }
+
+  try {
+    // Check if manual already exists for this user
+    const existingQuery = query(
+      collection(db, 'users', user.uid, 'rag'),
+      where('type', '==', 'system_manual'),
+      limit(1)
+    );
+    
+    const existing = await getDocs(existingQuery);
+    
+    if (!existing.empty) {
+      console.debug('[RAG] System manual already ingested for this user');
+      return;
+    }
+
+    // Import the manual (dynamic to avoid circular dependencies)
+    const { USER_MANUAL_MARKDOWN, APP_VERSION, MANUAL_VERSION } = await import('./userManual');
+    
+    const tokens = estimateTokens(USER_MANUAL_MARKDOWN);
+    
+    // Generate embedding for semantic search
+    let embedding: number[] | undefined;
+    try {
+      // Use first 8000 chars for embedding
+      const textForEmbedding = USER_MANUAL_MARKDOWN.slice(0, 8000);
+      embedding = await getEmbedding(textForEmbedding);
+    } catch (e) {
+      console.warn('[RAG] Could not generate embedding for system manual:', e);
+      // Continue without embedding - fallback to keyword search
+    }
+    
+    const ragDoc: Omit<RAGDocument, 'id'> = {
+      userId: user.uid,
+      type: 'knowledge', // Use 'knowledge' type so it's searchable
+      title: `OpenElara Cloud System Manual v${MANUAL_VERSION}`,
+      content: USER_MANUAL_MARKDOWN,
+      tokens,
+      embedding,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      metadata: {
+        source: 'system_manual',
+        version: APP_VERSION,
+        permanent: true, // Flag for UI (don't allow deletion)
+        system: true,
+      },
+    };
+    
+    const docRef = await addDoc(collection(db, 'users', user.uid, 'rag'), {
+      ...ragDoc,
+      createdAt: Timestamp.fromDate(ragDoc.createdAt),
+      updatedAt: Timestamp.fromDate(ragDoc.updatedAt),
+    });
+    
+    // Update storage usage
+    await updateStorageUsage(USER_MANUAL_MARKDOWN.length, 'rag');
+    
+    console.info('[RAG] System manual ingested successfully:', docRef.id);
+  } catch (e) {
+    console.error('[RAG] Failed to ingest system manual:', e);
+    // Don't throw - this is non-critical, app should continue
+  }
 }
 
 // ============================================================================

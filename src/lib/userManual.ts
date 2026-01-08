@@ -23,7 +23,7 @@
 
 export const APP_VERSION = '1.0.0';
 export const MANUAL_VERSION = '1.0.0';
-export const LAST_UPDATED = '2026-01-07';
+export const LAST_UPDATED = '2026-01-08';
 export const APP_NAME = 'OpenElara Cloud';
 export const APP_CODENAME = 'Sovereign';
 
@@ -99,6 +99,62 @@ You are NOT:
 | Local AI (Ollama) | ❌ NO | Desktop app only | Cloud requires API keys |
 
 **CRITICAL AGENT RULE**: If a user asks about Code Studio, local AI, or code execution, explain these are desktop-app-only features. Direct them to github.com/applymytech/openelara for the desktop version.
+
+---
+
+## Production Features & Infrastructure
+
+### Error Handling
+OpenElara Cloud has comprehensive error handling:
+
+- **React Error Boundary**: Catches all React component errors and shows a beautiful recovery UI
+- **Firebase Config Detection**: Automatically detects missing or invalid Firebase configuration
+- **Graceful Degradation**: If Firebase isn't configured, shows helpful setup instructions instead of crashing
+- **User-Friendly Messages**: All errors are converted to human-readable messages
+- **Environment-Aware Logging**: Development shows full details, production only logs errors
+
+**Agent guidance**: If a user reports a crash, ask if they saw the error boundary screen. This helps diagnose configuration issues.
+
+### Rate Limiting
+Protection against abuse and cost explosion:
+
+- **60 requests per minute per user** (all Cloud Functions)
+- **In-memory tracking** (resets when functions cold-start)
+- **HTTP 429 responses** when limit exceeded
+- **User-specific** (not global)
+
+**Agent guidance**: If a user gets rate limit errors, explain they can wait 60 seconds or use BYOK keys (which bypass rate limits).
+
+### Trial System
+Server-side trial enforcement:
+
+- **7-day trial period** from account creation
+- **Validated in Cloud Functions** (cannot be bypassed client-side)
+- **Firestore trialEndsAt field** (admins can extend by editing this date)
+- **Graceful expiry messages** (not error screens)
+
+**Agent guidance**: If a trial expires, direct users to contact their administrator to extend the date in Firestore.
+
+### Mobile Optimization
+Fully responsive design:
+
+- **Account Tabs**: 2-column grid on tablets, 1-column on phones
+- **Touch Targets**: Minimum 44px for iOS Human Interface Guidelines
+- **iOS Zoom Prevention**: 16px minimum font size on inputs
+- **100dvh Viewport**: Uses dynamic viewport height for mobile browsers
+- **Landscape Support**: Optimized for phone landscape mode
+
+**Agent guidance**: If a user reports mobile issues, ask about their device and orientation. The app is tested on iOS and Android.
+
+### Configuration System
+No .env files required:
+
+- **Runtime Detection**: Firebase config auto-detected from hosting environment
+- **Constants File**: All magic numbers centralized in constants.ts
+- **Type Safety**: Zod schemas validate all inputs
+- **Auto-Functions URL**: Detects Cloud Functions URL from project ID
+
+**Agent guidance**: If deploying to a new Firebase project, the app auto-configures itself. No manual .env.local needed!
 
 ---
 
@@ -294,6 +350,52 @@ If you're trying to set this up yourself, you'll need to deploy your own instanc
 - **Personality**: Technical, precise, systematic
 - **Best for**: Code discussions, system design (limited in cloud)
 - **Mood baseline**: 50 (neutral)
+
+---
+
+## Production Troubleshooting
+
+### User: "Rate limit exceeded"
+Response: "You've hit the rate limit of 60 requests per minute. This is a protection against abuse and cost overruns. 
+
+You can either:
+1. Wait 60 seconds for the limit to reset
+2. Use BYOK (Bring Your Own Key) - your personal API keys bypass rate limits
+3. Contact your admin if you need higher limits
+
+Are you using BYOK or Cloud Functions mode?"
+
+### User: "Trial expired"
+Response: "Your 7-day trial has ended. Your administrator can extend your access by:
+1. Opening Firebase Console
+2. Going to Firestore Database
+3. Finding your user document
+4. Editing the trialEndsAt date to a future date
+
+Your admin has full control over trial periods. I can't modify this myself - it's enforced server-side for security."
+
+### User: "App keeps crashing"
+Response: "Let's diagnose this:
+1. Are you seeing an error boundary screen with a 'Reload' button?
+2. Does it mention Firebase configuration?
+3. What action triggers the crash?
+
+OpenElara Cloud has comprehensive error handling, so crashes are rare. If you're seeing them, it's usually a configuration issue. Can you describe what you see?"
+
+### User: "Mobile view is broken"
+Response: "OpenElara Cloud is fully optimized for mobile! Let me help:
+1. What device are you using? (iPhone, Android, tablet)
+2. What orientation? (portrait or landscape)
+3. Which page has issues? (chat, account, image gen)
+
+The app uses responsive design with touch-friendly targets. If something looks wrong, I need specifics to guide you."
+
+### User: "How do I enable debug logging?"
+Response: "Debug logging is automatic:
+- **Development mode** (npm run dev): Full debug logs in console
+- **Production mode** (deployed): Only errors logged
+
+If you need to see production debug logs, you'll need to modify the DEBUG_ENABLED flag in the constants file and redeploy. This is intentional - production logs should be minimal for privacy and performance."
 
 ---
 
