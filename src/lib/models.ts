@@ -119,34 +119,7 @@ const CACHE_DURATION = 1000 * 60 * 60; // 1 hour
 
 export const IMAGE_MODEL_METADATA: Record<string, ImageModelMetadata> = {
   // FLUX Models - Working (Verified)
-  "black-forest-labs/FLUX.1-schnell-Free": {
-    displayName: "FLUX.1 Schnell Free",
-    description: "Fast image generation - Free tier",
-    defaultSteps: 2,
-    stepRange: { min: 1, max: 4 },
-    defaultWidth: 1024,
-    defaultHeight: 1024,
-    resolutionPresets: [
-      { width: 512, height: 512, label: "Square (512x512)" },
-      { width: 768, height: 768, label: "Square (768x768)" },
-      { width: 1024, height: 1024, label: "Square HD (1024x1024)" },
-      { width: 1024, height: 768, label: "Landscape (1024x768)" },
-      { width: 768, height: 1024, label: "Portrait (768x1024)" },
-      { width: 1280, height: 720, label: "Widescreen (1280x720)" },
-    ],
-    supportsLoRA: false,
-    supportsNegativePrompt: true,
-    supportsT2I: true,
-    supportsI2I: true,
-    supportsSeed: true,
-    supportsSteps: true,
-    supportsGuidanceScale: true,
-    defaultGuidanceScale: 15.2,
-    guidanceScaleRange: { min: 0.5, max: 30 },
-    outputFormats: ["jpeg", "png"],
-    recommended: true,
-    free: true,
-  },
+  // NOTE: FLUX.1-schnell-Free was deprecated by Together.ai on 2026-01-08
   "black-forest-labs/FLUX.1-schnell": {
     displayName: "FLUX.1 Schnell",
     description: "Fast, high-quality image generation",
@@ -1444,16 +1417,8 @@ export function getDefaultImageModel(): string {
     return selected;
   }
   
-  // ONLY recommended models are valid - prefer free + recommended
-  const freeRecommended = Object.entries(IMAGE_MODEL_METADATA)
-    .filter(([_, meta]) => meta.free && meta.recommended)
-    .map(([id]) => id);
-  
-  if (freeRecommended.length > 0) {
-    return freeRecommended[0];
-  }
-  
-  // If no free+recommended, use first recommended
+  // NOTE: FLUX.1-schnell-Free was deprecated 2026-01-08
+  // Now defaulting to paid FLUX.1-schnell as it's the fastest option
   const recommended = getRecommendedImageModels();
   if (recommended.length > 0) {
     return recommended[0];

@@ -114,8 +114,8 @@ export const AUTO_SAVE_DEBOUNCE_MS = 1000;
 /** Default chat model */
 export const DEFAULT_CHAT_MODEL = 'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free';
 
-/** Default image model */
-export const DEFAULT_IMAGE_MODEL = 'black-forest-labs/FLUX.1-schnell-Free';
+/** Default image model (FLUX.1-schnell-Free deprecated 2026-01-08) */
+export const DEFAULT_IMAGE_MODEL = 'black-forest-labs/FLUX.1-schnell';
 
 /** Default video model */
 export const DEFAULT_VIDEO_MODEL = 'minimax/video-01';

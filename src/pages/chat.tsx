@@ -9,6 +9,7 @@ import { auth, db } from "@/lib/firebase";
 import ELARA, { getRandomGreeting, getErrorResponse } from "@/lib/elara";
 import { getDefaultChatModel, setSelectedModel, CHAT_MODEL_METADATA, getChatModels, type Model } from "@/lib/models";
 import { getActiveCharacter, Character } from "@/lib/characters";
+import ModelSelector from "@/components/ModelSelector";
 import { getMoodTracker, resetMoodTracker, MoodTracker } from "@/lib/mood";
 import { buildChatSystemPrompt, buildContextPrefix } from "@/lib/promptBuilder";
 import { executeCouncilMode, type CouncilResult } from "@/lib/councilMode";
@@ -986,65 +987,16 @@ export default function Chat() {
       {/* Model Selector Modal */}
       {showModelSelector && (
         <div className="modal-overlay" onClick={() => setShowModelSelector(false)}>
-          <div className="model-selector-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>🤖 Select Chat Model</h2>
-              <button className="modal-close-btn" onClick={() => setShowModelSelector(false)}>×</button>
-            </div>
-            <div className="modal-body">
-              <div className="model-selector-grid">
-                {availableChatModels.length > 0 ? (
-                  availableChatModels.map(model => (
-                    <button
-                      key={model.id}
-                      className={`model-card ${model.id === currentModel ? 'active' : ''}`}
-                      onClick={() => {
-                        setCurrentModel(model.id);
-                        setSelectedModel('chat', model.id);
-                        setShowModelSelector(false);
-                      }}
-                    >
-                      <div className="model-card-header">
-                        <span className="model-card-name">{model.metadata?.displayName || model.displayName || model.id.split('/').pop()}</span>
-                        {model.id === currentModel && <span className="model-badge current">✓</span>}
-                      </div>
-                      <div className="model-card-badges">
-                        {(model.metadata as any)?.free && <span className="model-badge free">FREE</span>}
-                        {(model.metadata as any)?.recommended && <span className="model-badge rec">★ RECOMMENDED</span>}
-                      </div>
-                      {model.metadata?.description && (
-                        <div className="model-card-description">{model.metadata.description}</div>
-                      )}
-                    </button>
-                  ))
-                ) : (
-                  Object.entries(CHAT_MODEL_METADATA).map(([id, meta]) => (
-                    <button
-                      key={id}
-                      className={`model-card ${id === currentModel ? 'active' : ''}`}
-                      onClick={() => {
-                        setCurrentModel(id);
-                        setSelectedModel('chat', id);
-                        setShowModelSelector(false);
-                      }}
-                    >
-                      <div className="model-card-header">
-                        <span className="model-card-name">{meta.displayName}</span>
-                        {id === currentModel && <span className="model-badge current">✓</span>}
-                      </div>
-                      <div className="model-card-badges">
-                        {meta.free && <span className="model-badge free">FREE</span>}
-                        {meta.recommended && <span className="model-badge rec">★ RECOMMENDED</span>}
-                      </div>
-                      {meta.description && (
-                        <div className="model-card-description">{meta.description}</div>
-                      )}
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          <ModelSelector
+            currentModel={currentModel}
+            availableModels={availableChatModels}
+            onSelect={(modelId) => {
+              setCurrentModel(modelId);
+              setSelectedModel('chat', modelId);
+              setShowModelSelector(false);
+            }}
+            onClose={() => setShowModelSelector(false)}
+          />
         </div>
       )}
 
@@ -1544,141 +1496,6 @@ export default function Chat() {
 
         .ribbon-model-selector:hover .model-dropdown-arrow {
           opacity: 1;
-        }
-
-        .model-selector-modal {
-          background: var(--secondary-bg-color);
-          border: 1px solid var(--glass-border);
-          border-radius: 16px;
-          max-width: 900px;
-          width: 90vw;
-          max-height: 80vh;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .model-selector-modal .modal-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 20px 24px;
-          border-bottom: 1px solid var(--glass-border);
-        }
-
-        .model-selector-modal .modal-header h2 {
-          margin: 0;
-          color: var(--accent-color);
-          font-size: 1.5rem;
-        }
-
-        .model-selector-modal .modal-close-btn {
-          background: none;
-          border: none;
-          color: var(--secondary-text-color);
-          font-size: 2rem;
-          cursor: pointer;
-          padding: 0;
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s ease;
-        }
-
-        .model-selector-modal .modal-close-btn:hover {
-          color: var(--accent-color);
-          transform: scale(1.1);
-        }
-
-        .model-selector-modal .modal-body {
-          padding: 20px;
-          overflow-y: auto;
-        }
-
-        .model-selector-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-          gap: 16px;
-        }
-
-        .model-card {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-          padding: 18px;
-          background: rgba(0, 212, 255, 0.03);
-          border: 2px solid var(--glass-border);
-          border-radius: 12px;
-          color: var(--main-text-color);
-          cursor: pointer;
-          transition: all 0.2s ease;
-          text-align: left;
-        }
-
-        .model-card:hover {
-          background: rgba(0, 212, 255, 0.08);
-          border-color: var(--accent-color);
-          transform: translateY(-2px);
-          box-shadow: 0 4px 16px rgba(0, 212, 255, 0.2);
-        }
-
-        .model-card.active {
-          background: rgba(0, 212, 255, 0.15);
-          border: 2px solid var(--accent-color);
-          box-shadow: 0 0 24px rgba(0, 212, 255, 0.3);
-        }
-
-        .model-card-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 8px;
-        }
-
-        .model-card-name {
-          font-weight: 600;
-          font-size: 1rem;
-          color: var(--accent-color);
-          flex: 1;
-        }
-
-        .model-card-badges {
-          display: flex;
-          gap: 6px;
-          flex-wrap: wrap;
-        }
-
-        .model-badge {
-          font-size: 0.7rem;
-          padding: 4px 10px;
-          border-radius: 6px;
-          font-weight: 600;
-          white-space: nowrap;
-        }
-
-        .model-badge.free {
-          background: rgba(0, 255, 136, 0.2);
-          color: #00ff88;
-          border: 1px solid rgba(0, 255, 136, 0.3);
-        }
-
-        .model-badge.rec {
-          background: rgba(255, 193, 7, 0.2);
-          color: #ffc107;
-          border: 1px solid rgba(255, 193, 7, 0.3);
-        }
-
-        .model-badge.current {
-          background: rgba(0, 212, 255, 0.3);
-          color: var(--accent-color);
-          border: 1px solid var(--accent-color);
-        }
-
-        .model-card-description {
-          font-size: 0.85rem;
-          color: var(--secondary-text-color);
-          line-height: 1.5;
         }
 
         /* ============== PERSONA TOGGLE ============== */
