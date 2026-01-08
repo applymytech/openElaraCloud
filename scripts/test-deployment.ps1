@@ -44,7 +44,7 @@ try {
 Write-Host ""
 Write-Host "🔒 Test 2: Content Security Policy" -ForegroundColor Yellow
 try {
-    $cspTest = node scripts/test-csp.js
+    node scripts/test-csp.js | Out-Null
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  ✓ PASS: CSP tests passed" -ForegroundColor Green
         $TESTS_PASSED++

@@ -455,7 +455,7 @@ export default function Chat() {
       // ================== MEDIA REQUEST (SELFIE/VIDEO) ==================
       if (mediaRequest) {
         // User requested a selfie or video through natural language
-        // Show an acknowledgment message, then trigger the generation panel
+        // Show an acknowledgment message, then autonomously generate
         const mediaAck: ChatMessageWithMedia = {
           role: "assistant",
           content: mediaRequest === 'selfie'
@@ -464,16 +464,68 @@ export default function Chat() {
         };
         setMessages((prev) => [...prev, mediaAck]);
         
-        // Small delay for user to see the message, then open the panel
-        setTimeout(() => {
-          if (mediaRequest === 'selfie') {
-            setShowImageGen(true);
-          } else {
+        // Autonomously generate without modal
+        if (mediaRequest === 'selfie') {
+          // Generate agentic selfie autonomously
+          (async () => {
+            try {
+              const { generateAgenticSelfie } = await import('../lib/mediaGeneration');
+              const { getMoodState } = await import('../lib/mood');
+              const { storeMedia } = await import('../lib/storage');
+              
+              const moodState = getMoodState(activeChar.id);
+              const firstRecommended = Object.entries((await import('../lib/mediaGeneration')).IMAGE_MODELS)
+                .find(([_, config]) => config.recommended)?.[0] || 'black-forest-labs/FLUX.1-schnell';
+              
+              const agenticResult = await generateAgenticSelfie({
+                sceneSuggestion: undefined, // Let AI decide based on mood/context
+                model: firstRecommended,
+                character: activeChar,
+                moodState,
+                conversationContext: messages.slice(-5).map(m => 
+                  `${m.role}: ${typeof m.content === 'string' ? m.content : '[attachment]'}`
+                ).join('\n'),
+              });
+              
+              // Auto-store to cloud
+              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              const filename = `${activeChar.name}_selfie_${timestamp}.png`;
+              
+              try {
+                await storeMedia(agenticResult.image.signedContent, filename, 'image/png');
+              } catch (storageError) {
+                console.warn('Could not store to cloud (continuing):', storageError);
+              }
+              
+              // Add image to chat
+              const imageMsg: ChatMessageWithMedia = {
+                role: 'assistant',
+                content: `📸 ${agenticResult.aiSceneDecision}\n\nHere's my selfie! Click to download.`,
+                image: {
+                  dataUrl: agenticResult.image.signedContent.dataUrl,
+                  signedContent: agenticResult.image.signedContent,
+                  prompt: agenticResult.image.prompt,
+                },
+              };
+              setMessages(prev => [...prev, imageMsg]);
+            } catch (error: any) {
+              const errorMsg: ChatMessageWithMedia = {
+                role: 'assistant',
+                content: `❌ Sorry, I couldn't take a selfie: ${error.message}`,
+              };
+              setMessages(prev => [...prev, errorMsg]);
+            } finally {
+              setSending(false);
+            }
+          })();
+        } else {
+          // Video: still show modal (video generation is more complex)
+          setTimeout(() => {
             setShowVideoGen(true);
-          }
-        }, 500);
+            setSending(false);
+          }, 500);
+        }
         
-        setSending(false);
         return; // Exit early - media request handled
       }
 
