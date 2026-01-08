@@ -58,6 +58,10 @@ interface ChatMessageWithMedia extends ChatMessage {
     signedContent: SignedContent;
     prompt: string;
   };
+  video?: {
+    url: string;
+    prompt: string;
+  };
   thinking?: string;  // AI's reasoning (shown in collapsible)
 }
 
@@ -519,11 +523,61 @@ export default function Chat() {
             }
           })();
         } else {
-          // Video: still show modal (video generation is more complex)
-          setTimeout(() => {
-            setShowVideoGen(true);
-            setSending(false);
-          }, 500);
+          // Video: autonomous generation with progress updates
+          (async () => {
+            try {
+              const { generateAgenticVideo } = await import('../lib/mediaGeneration');
+              const { getDefaultVideoModel } = await import('../lib/models');
+              const { getMoodState } = await import('../lib/mood');
+              const { storeMedia } = await import('../lib/storage');
+              
+              const moodState = getMoodState(activeChar.id);
+              const defaultModel = getDefaultVideoModel();
+              
+              // Add progress message
+              const progressMsg: ChatMessageWithMedia = {
+                role: 'assistant',
+                content: '🎬 Creating your video... This may take a few minutes.',
+              };
+              setMessages(prev => [...prev, progressMsg]);
+              
+              const agenticResult = await generateAgenticVideo({
+                sceneSuggestion: undefined, // Let AI decide based on mood/context
+                model: defaultModel,
+                duration: 5, // Default 5 seconds
+                character: activeChar,
+                moodState,
+                conversationContext: messages.slice(-5).map(m => 
+                  `${m.role}: ${typeof m.content === 'string' ? m.content : '[attachment]'}`
+                ).join('\n'),
+                onProgress: (status: string, attempt: number) => {
+                  console.log(`[Video Gen] ${status} (${attempt})`);
+                },
+              });
+              
+              // Auto-store to cloud (non-blocking) - skip for videos since URL is already hosted
+              // Videos from Together.ai don't need storage - the URL is permanent
+              
+              // Add video to chat
+              const videoMsg: ChatMessageWithMedia = {
+                role: 'assistant',
+                content: `🎬 ${agenticResult.aiSceneDecision}\n\nHere's my video! Right-click to download.`,
+                video: {
+                  url: agenticResult.video.url,
+                  prompt: agenticResult.video.prompt,
+                },
+              };
+              setMessages(prev => [...prev, videoMsg]);
+            } catch (error: any) {
+              const errorMsg: ChatMessageWithMedia = {
+                role: 'assistant',
+                content: `❌ Sorry, I couldn't create a video: ${error.message}`,
+              };
+              setMessages(prev => [...prev, errorMsg]);
+            } finally {
+              setSending(false);
+            }
+          })();
         }
         
         return; // Exit early - media request handled
@@ -774,7 +828,7 @@ export default function Chat() {
 
   // Current character name (fallback to ELARA)
   const charName = character?.name || ELARA.NAME;
-  const charIconPath = character?.iconPath || '/characters/icon_elara.png';
+  const charIconPath = character?.iconPath || '/characters/elara_avatar.png';
 
   // Helper to render avatar (always uses image - no emoji fallback)
   const renderAvatar = (size: 'sm' | 'md' | 'lg' = 'md') => {

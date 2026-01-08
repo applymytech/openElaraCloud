@@ -39,6 +39,8 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showByokInfo, setShowByokInfo] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallButton, setShowInstallButton] = useState(false);
 
   // Check Firebase configuration first
   const configError = getFirebaseConfigError();
@@ -56,6 +58,15 @@ export default function Login() {
       logger.error('Firebase not configured');
       return;
     }
+
+    // Listen for PWA install prompt
+    const handleBeforeInstall = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallButton(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -76,7 +87,11 @@ export default function Login() {
       }
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
   }, [router]);
 
   /**
@@ -132,6 +147,19 @@ export default function Login() {
     } finally {
       setIsLoggingIn(false);
     }
+  };
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    
+    if (outcome === 'accepted') {
+      setShowInstallButton(false);
+    }
+    
+    setDeferredPrompt(null);
   };
 
   if (loading) {
@@ -245,6 +273,21 @@ export default function Login() {
               </svg>
               <span>{isLoggingIn ? 'Signing In...' : 'Continue with Google'}</span>
             </button>
+
+            {/* Desktop Download Button */}
+            {showInstallButton && (
+              <button 
+                onClick={handleInstallApp}
+                className="desktop-download-btn"
+              >
+                <span className="download-icon">💻</span>
+                <div className="download-text">
+                  <strong>Install as App</strong>
+                  <span>Windows, macOS, Android, iOS</span>
+                </div>
+                <span className="download-arrow">→</span>
+              </button>
+            )}
 
             {/* BYOK Requirements */}
             <div className="byok-requirements">
@@ -684,6 +727,56 @@ export default function Login() {
         }
 
         .google-icon {
+          flex-shrink: 0;
+        }
+
+        /* Desktop Download Button */
+        .desktop-download-btn {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          width: 100%;
+          padding: 16px 20px;
+          background: linear-gradient(135deg, #00d4ff 0%, #0099ff 100%);
+          border: none;
+          border-radius: 12px;
+          color: white;
+          text-decoration: none;
+          font-size: 15px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          margin-bottom: 28px;
+        }
+
+        .desktop-download-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 24px rgba(0, 212, 255, 0.4);
+        }
+
+        .download-icon {
+          font-size: 28px;
+          flex-shrink: 0;
+        }
+
+        .download-text {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          flex: 1;
+        }
+
+        .download-text strong {
+          font-size: 16px;
+          font-weight: 600;
+        }
+
+        .download-text span {
+          font-size: 13px;
+          opacity: 0.9;
+        }
+
+        .download-arrow {
+          font-size: 24px;
           flex-shrink: 0;
         }
 

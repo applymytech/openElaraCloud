@@ -79,7 +79,7 @@ export const ELARA: Character = {
   id: 'elara',
   name: 'Elara',
   iconEmoji: '✧',
-  iconPath: '/characters/icon_elara.png',
+  iconPath: '/characters/elara_avatar.png',
   
   description: 
     "A youthful, athletic female android with a lithe, energetic build. " +
