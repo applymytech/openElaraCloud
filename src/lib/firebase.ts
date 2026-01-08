@@ -10,9 +10,11 @@ const firebaseConfig = getFirebaseConfig();
 // Validate configuration
 const validation = validateFirebaseConfig(firebaseConfig);
 if (!validation.valid) {
-  console.error('[Firebase] Configuration error:', validation.error);
-  if (validation.setupInstructions) {
-    console.error('[Firebase] Setup instructions:\n', validation.setupInstructions);
+  if (typeof window !== 'undefined' && window.console) {
+    window.console.error('[Firebase] Configuration error:', validation.error);
+    if (validation.setupInstructions) {
+      window.console.error('[Firebase] Setup instructions:\n', validation.setupInstructions);
+    }
   }
 }
 
@@ -33,10 +35,14 @@ try {
     db = getFirestore(app);
     storage = getStorage(app);
   } else {
-    console.warn('[Firebase] No configuration found - Firebase services unavailable');
+    if (typeof window !== 'undefined' && window.console) {
+      window.console.warn('[Firebase] No configuration found - Firebase services unavailable');
+    }
   }
 } catch (error) {
-  console.error('[Firebase] Initialization failed:', error);
+  if (typeof window !== 'undefined' && window.console) {
+    window.console.error('[Firebase] Initialization failed:', error);
+  }
 }
 
 // Export services (may be null if config missing)

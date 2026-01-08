@@ -157,7 +157,7 @@ export async function transcribeAudio(
   audioBlob: Blob, 
   options: STTOptions = {}
 ): Promise<STTResult> {
-  const apiKey = getAPIKey('together');
+  const apiKey = await getAPIKey('together');
   
   if (!apiKey) {
     return { 

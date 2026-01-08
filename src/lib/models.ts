@@ -1181,7 +1181,7 @@ export const UNSUPPORTED_IMAGE_MODELS = [
 // ============================================================================
 
 async function fetchTogetherModelsFromAPI(): Promise<any[]> {
-  const apiKey = getAPIKey('together');
+  const apiKey = await getAPIKey('together');
   
   if (!apiKey) {
     throw new Error('Together.ai API key not configured');

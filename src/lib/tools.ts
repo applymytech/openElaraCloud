@@ -13,6 +13,9 @@
 import { powerAnswer, powerRead, type ExaResult } from './exa';
 import { generateImage, generateAgenticVideo, type GeneratedImage } from './mediaGeneration';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT } from './constants';
+import { getCostEffectiveVideoModels } from './models';
+import { getAPIKeySync } from './byok';
+import type { Tool } from './apiClient';
 
 // ============================================================================
 // TYPES
@@ -45,9 +48,9 @@ export interface ToolResult {
  * Rule: If you're tempted to add more tools, you're doing it wrong.
  * Instead, make existing tools more flexible.
  */
-export const DEEP_THOUGHT_TOOLS = [
+export const DEEP_THOUGHT_TOOLS: Tool[] = [
   {
-    type: "function",
+    type: "function" as const,
     function: {
       name: "search_web",
       description: "Search the web for current information. Returns an AI-generated answer with sources. Use this for any factual question, news, or recent events.",
@@ -64,7 +67,7 @@ export const DEEP_THOUGHT_TOOLS = [
     }
   },
   {
-    type: "function",
+    type: "function" as const,
     function: {
       name: "read_url",
       description: "Read the full content of a specific webpage. Use this when you found a URL and need to know what's on that page.",
@@ -81,7 +84,7 @@ export const DEEP_THOUGHT_TOOLS = [
     }
   },
   {
-    type: "function",
+    type: "function" as const,
     function: {
       name: "make_image",
       description: "Create an image based on a description. You write the description with all creative details.",
@@ -98,7 +101,7 @@ export const DEEP_THOUGHT_TOOLS = [
     }
   },
   {
-    type: "function",
+    type: "function" as const,
     function: {
       name: "make_video",
       description: "Create a short video based on a description. You write the description with all creative details.",
@@ -115,7 +118,7 @@ export const DEEP_THOUGHT_TOOLS = [
     }
   },
   {
-    type: "function",
+    type: "function" as const,
     function: {
       name: "save_thought",
       description: "Save an important finding or reasoning step. Use this to remember things for later turns.",
@@ -295,6 +298,54 @@ export async function executeToolCall(
     
     return toolResult;
   }
+}
+
+// ============================================================================
+// TOOL AVAILABILITY CHECK
+// ============================================================================
+
+/**
+ * Check which tools are currently available based on API keys
+ */
+export function getAvailableTools(): {
+  tools: Tool[];
+  unavailableReasons: string[];
+} {
+  const tools: Tool[] = [];
+  const unavailableReasons: string[] = [];
+  
+  // Check if Exa key is available for web search tools
+  const hasExaKey = !!getAPIKeySync('exa');
+  
+  if (hasExaKey) {
+    // Add search_web and read_url if Exa key exists
+    tools.push(
+      DEEP_THOUGHT_TOOLS.find(t => t.function.name === 'search_web')!,
+      DEEP_THOUGHT_TOOLS.find(t => t.function.name === 'read_url')!
+    );
+  } else {
+    unavailableReasons.push('🔍 Web search tools (search_web, read_url) require Exa.ai API key');
+  }
+  
+  // Check if Together key is available for media generation
+  const hasTogetherKey = !!getAPIKeySync('together');
+  
+  if (hasTogetherKey) {
+    tools.push(
+      DEEP_THOUGHT_TOOLS.find(t => t.function.name === 'make_image')!,
+      DEEP_THOUGHT_TOOLS.find(t => t.function.name === 'make_video')!
+    );
+  } else {
+    unavailableReasons.push('🎨 Media generation tools (make_image, make_video) require Together.ai API key');
+  }
+  
+  // save_thought is always available (no API key needed)
+  tools.push(DEEP_THOUGHT_TOOLS.find(t => t.function.name === 'save_thought')!);
+  
+  return {
+    tools: tools.filter(Boolean),
+    unavailableReasons,
+  };
 }
 
 // ============================================================================

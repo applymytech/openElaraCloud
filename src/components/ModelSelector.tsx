@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { getAllAPIKeys } from '@/lib/byok';
+import { getAllAPIKeysSync } from '@/lib/byok';
 import { CHAT_MODEL_METADATA, type ChatModelMetadata, type Model } from '@/lib/models';
 
 // ============================================================================
@@ -60,7 +60,7 @@ function toggleFavorite(modelId: string): void {
 // ============================================================================
 
 function detectAvailableProviders(): Provider[] {
-  const keys = getAllAPIKeys();
+  const keys = getAllAPIKeysSync();
   const providers: Provider[] = [];
   
   if (keys.together) providers.push('together');

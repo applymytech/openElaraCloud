@@ -6,9 +6,14 @@
  * Keys are stored in localStorage (browser) - NEVER sent to server.
  * The Same-Origin Policy protects localStorage from other websites.
  * 
- * In the desktop app, keys are encrypted with Electron's safeStorage.
- * In the cloud app, they're in localStorage which is inherently per-origin.
+ * Security Improvements (2026-01-08):
+ * - Keys are now encrypted using Web Crypto API (AES-GCM-256)
+ * - Encryption key derived from device fingerprint
+ * - Still vulnerable to XSS, but protects against casual inspection
+ * - Graceful fallback to base64 if crypto unavailable
  */
+
+import { encryptKey, decryptKey, isCryptoAvailable } from './crypto';
 
 // ============================================================================
 // CONSTANTS
@@ -56,23 +61,62 @@ export interface CustomEndpoint {
 // ============================================================================
 
 /**
- * Save an API key to localStorage
+ * Save an API key to localStorage (encrypted)
  */
-export function saveAPIKey(provider: APIKeyProvider, key: string): void {
+export async function saveAPIKey(provider: APIKeyProvider, key: string): Promise<void> {
   if (typeof window === 'undefined') return;
   if (key.trim()) {
-    localStorage.setItem(`${KEY_PREFIX}${provider}`, key.trim());
+    const encrypted = await encryptKey(key.trim());
+    localStorage.setItem(`${KEY_PREFIX}${provider}`, encrypted);
   } else {
     localStorage.removeItem(`${KEY_PREFIX}${provider}`);
   }
 }
 
 /**
- * Get an API key from localStorage
+ * Save an API key synchronously (for legacy code)
+ * Uses base64 fallback instead of proper encryption
  */
-export function getAPIKey(provider: APIKeyProvider): string | null {
+export function saveAPIKeySync(provider: APIKeyProvider, key: string): void {
+  if (typeof window === 'undefined') return;
+  if (key.trim()) {
+    const encoded = btoa(key.trim());
+    localStorage.setItem(`${KEY_PREFIX}${provider}`, encoded);
+  } else {
+    localStorage.removeItem(`${KEY_PREFIX}${provider}`);
+  }
+}
+
+/**
+ * Get an API key from localStorage (decrypted)
+ */
+export async function getAPIKey(provider: APIKeyProvider): Promise<string | null> {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(`${KEY_PREFIX}${provider}`);
+  const encrypted = localStorage.getItem(`${KEY_PREFIX}${provider}`);
+  if (!encrypted) return null;
+  
+  try {
+    return await decryptKey(encrypted);
+  } catch (error) {
+    // If decryption fails, assume it's plain text (legacy)
+    return encrypted;
+  }
+}
+
+/**
+ * Get an API key synchronously (for legacy code)
+ * Attempts base64 decode, falls back to plain text
+ */
+export function getAPIKeySync(provider: APIKeyProvider): string | null {
+  if (typeof window === 'undefined') return null;
+  const stored = localStorage.getItem(`${KEY_PREFIX}${provider}`);
+  if (!stored) return null;
+  
+  try {
+    return atob(stored);
+  } catch {
+    return stored;
+  }
 }
 
 /**
@@ -84,16 +128,35 @@ export function removeAPIKey(provider: APIKeyProvider): void {
 }
 
 /**
- * Get all stored API keys
+ * Get all stored API keys (decrypted)
  */
-export function getAllAPIKeys(): APIKeys {
+export async function getAllAPIKeys(): Promise<APIKeys> {
   if (typeof window === 'undefined') return {};
   
   const keys: APIKeys = {};
   const providers: APIKeyProvider[] = ['together', 'openrouter', 'exa'];
   
   for (const provider of providers) {
-    const key = getAPIKey(provider);
+    const key = await getAPIKey(provider);
+    if (key) {
+      keys[provider] = key;
+    }
+  }
+  
+  return keys;
+}
+
+/**
+ * Get all stored API keys synchronously (for legacy code)
+ */
+export function getAllAPIKeysSync(): APIKeys {
+  if (typeof window === 'undefined') return {};
+  
+  const keys: APIKeys = {};
+  const providers: APIKeyProvider[] = ['together', 'openrouter', 'exa'];
+  
+  for (const provider of providers) {
+    const key = getAPIKeySync(provider);
     if (key) {
       keys[provider] = key;
     }
@@ -106,7 +169,7 @@ export function getAllAPIKeys(): APIKeys {
  * Check if user has any configured API keys
  */
 export function hasOwnKeys(): boolean {
-  const keys = getAllAPIKeys();
+  const keys = getAllAPIKeysSync();
   // Together.ai is the primary provider, OpenRouter for chat routing
   return !!(keys.together || keys.openrouter);
 }
@@ -115,7 +178,7 @@ export function hasOwnKeys(): boolean {
  * Check if user has Together.ai key (required for images/TTS)
  */
 export function hasTogetherKey(): boolean {
-  return !!getAPIKey('together');
+  return !!getAPIKeySync('together');
 }
 
 /**
@@ -141,7 +204,7 @@ export function clearAllKeys(): void {
  * Check if user has Exa.ai key (for web search)
  */
 export function hasExaKey(): boolean {
-  return !!getAPIKey('exa');
+  return !!getAPIKeySync('exa');
 }
 
 // ============================================================================

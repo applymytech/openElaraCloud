@@ -23,6 +23,7 @@ export {
   type ContentPart,
   type ToolCall,
   type ExtractedEmotionalState,
+  type Tool,
   
   // Functions
   chat,

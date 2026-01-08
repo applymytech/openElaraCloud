@@ -144,290 +144,841 @@ export default function Login() {
 
   return (
     <div className="login-page">
-      {/* Stars Background */}
+      {/* Animated Background */}
       <div className="stars-layer stars-1" />
       <div className="stars-layer stars-2" />
       <div className="stars-layer stars-3" />
+      <div className="gradient-orb orb-1" />
+      <div className="gradient-orb orb-2" />
+      <div className="gradient-orb orb-3" />
       
-      <div className="cover-bg" />
-      <div className="cover-overlay" />
-      
-      <div className="orb orb-1" />
-      <div className="orb orb-2" />
-      <div className="orb orb-3" />
-      
-      <div className="login-content">
-        {/* Logo */}
-        <div className="elara-logo">
-          <img src="/icon.png" alt="OpenElara" className="elara-logo-icon-img" />
-          <div className="elara-logo-text">
-            <span className="elara-logo-name">{ELARA.NAME}</span>
-            <span className="elara-logo-tagline">Sovereign Cloud AI - BYOK</span>
-          </div>
-        </div>
-
-        {/* BYOK Info Banner */}
-        <div className="byok-banner">
-          <div className="byok-banner-header" onClick={() => setShowByokInfo(!showByokInfo)}>
-            <span>🔑 BYOK Required - Have Your API Keys Ready!</span>
-            <span className="byok-toggle">{showByokInfo ? '▼' : '▶'}</span>
-          </div>
-          {showByokInfo && (
-            <div className="byok-banner-content">
-              <p><strong>Before you sign in, get your FREE API keys:</strong></p>
-              <ul>
-                <li><strong>Together.ai</strong> - Chat, images, video (free trial available) <a href="https://api.together.xyz" target="_blank" rel="noopener">→ Get Key</a></li>
-                <li><strong>OpenRouter</strong> - 50+ free models, access to all <a href="https://openrouter.ai" target="_blank" rel="noopener">→ Get Key</a></li>
-                <li><strong>Exa.ai</strong> - Web search (1000 free searches) <a href="https://exa.ai" target="_blank" rel="noopener">→ Get Key</a></li>
-              </ul>
-              <p className="byok-warning">
-                ⚠️ <strong>No API keys = No AI functionality.</strong> All keys are pay-as-you-go, no credit card needed for free tier!
-              </p>
+      {/* Desktop: Split Layout | Mobile: Single Column */}
+      <div className="login-container">
+        
+        {/* Left Panel - Hero Section (Desktop Only) */}
+        <div className="hero-panel">
+          <div className="hero-content">
+            {/* Logo */}
+            <div className="brand-header">
+              <img src="/icon.png" alt="OpenElara" className="brand-icon" />
+              <div className="brand-text">
+                <h1 className="brand-name">{ELARA.NAME}</h1>
+                <p className="brand-tagline">Sovereign Cloud AI Assistant</p>
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* 7-Day Trial Notice */}
-        <div className="trial-notice">
-          <strong>🚀 7-Day Demo</strong>
-          <p>This is a <strong>public demonstration</strong> of the code. After 7 days, deploy YOUR OWN sovereign instance with YOUR keys!</p>
-        </div>
-
-        <div className="form-container">
-          {error && <div className="form-error">⚠️ {error}</div>}
-
-          {/* OAuth Buttons */}
-          <div className="oauth-buttons">
-                <button
-                  onClick={handleGoogleSignIn}
-                  disabled={isLoggingIn}
-                  className="oauth-btn google-btn"
-                >
-                  <svg viewBox="0 0 24 24" width="20" height="20">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                  </svg>
-                  Continue with Google
-                </button>
+            {/* Feature Highlights */}
+            <div className="features-grid">
+              <div className="feature-card">
+                <div className="feature-icon">🔑</div>
+                <h3>BYOK Architecture</h3>
+                <p>Bring Your Own Keys - you control the AI providers, you pay for usage</p>
               </div>
+              
+              <div className="feature-card">
+                <div className="feature-icon">☁️</div>
+                <h3>Cloud Native</h3>
+                <p>Deploy to Firebase in minutes. Your infrastructure, your rules.</p>
+              </div>
+              
+              <div className="feature-card">
+                <div className="feature-icon">🧠</div>
+                <h3>Deep Thought</h3>
+                <p>Multi-turn agentic reasoning with web search, images, and video generation</p>
+              </div>
+              
+              <div className="feature-card">
+                <div className="feature-icon">🌐</div>
+                <h3>Multi-Model</h3>
+                <p>Access 50+ LLMs via OpenRouter, Together.ai, OpenAI, Anthropic</p>
+              </div>
+            </div>
 
-              {/* Deploy Your Own */}
-              <div className="deploy-notice">
-                <h3>Want Your Own Instance?</h3>
-                <p>Deploy this exact code with YOUR API keys in YOUR infrastructure:</p>
-                <div className="deploy-links">
-                  <a href="https://github.com/applymytech/openElaraCloud" target="_blank" rel="noopener" className="deploy-link">
-                    ☁️ Cloud Version (This Code)
-                  </a>
-                  <a href="https://github.com/applymytech/openElara" target="_blank" rel="noopener" className="deploy-link">
-                    🖥️ Desktop Version (with Code Studio)
-                  </a>
+            {/* Trial Badge */}
+            <div className="trial-badge">
+              <div className="trial-icon">🚀</div>
+              <div className="trial-text">
+                <strong>7-Day Demo Instance</strong>
+                <p>Try it now, deploy your own sovereign stack later</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel - Auth Form */}
+        <div className="auth-panel">
+          <div className="auth-content">
+            
+            {/* Mobile Logo */}
+            <div className="mobile-brand">
+              <img src="/icon.png" alt="OpenElara" className="mobile-brand-icon" />
+              <div className="mobile-brand-text">
+                <h1>{ELARA.NAME}</h1>
+                <p>Sovereign Cloud AI</p>
+              </div>
+            </div>
+
+            {/* Welcome Message */}
+            <div className="welcome-section">
+              <h2>Welcome Back</h2>
+              <p>Sign in to your sovereign AI assistant</p>
+            </div>
+
+            {error && (
+              <div className="auth-error">
+                <span className="error-icon">⚠️</span>
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* Google Sign In Button */}
+            <button
+              onClick={handleGoogleSignIn}
+              disabled={isLoggingIn}
+              className="google-signin-btn"
+            >
+              <svg viewBox="0 0 24 24" width="24" height="24" className="google-icon">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              <span>{isLoggingIn ? 'Signing In...' : 'Continue with Google'}</span>
+            </button>
+
+            {/* BYOK Requirements */}
+            <div className="byok-requirements">
+              <div 
+                className="byok-header" 
+                onClick={() => setShowByokInfo(!showByokInfo)}
+              >
+                <span className="byok-title">🔑 BYOK Requirements</span>
+                <span className="byok-chevron">{showByokInfo ? '▼' : '▶'}</span>
+              </div>
+              
+              {showByokInfo && (
+                <div className="byok-details">
+                  <p className="byok-intro">Get your FREE API keys before signing in:</p>
+                  
+                  <div className="byok-providers">
+                    <a 
+                      href="https://api.together.xyz" 
+                      target="_blank" 
+                      rel="noopener"
+                      className="provider-link"
+                    >
+                      <div className="provider-info">
+                        <strong>Together.ai</strong>
+                        <span>Chat, Images, Video</span>
+                      </div>
+                      <span className="provider-arrow">→</span>
+                    </a>
+                    
+                    <a 
+                      href="https://openrouter.ai" 
+                      target="_blank" 
+                      rel="noopener"
+                      className="provider-link"
+                    >
+                      <div className="provider-info">
+                        <strong>OpenRouter</strong>
+                        <span>50+ Free Models</span>
+                      </div>
+                      <span className="provider-arrow">→</span>
+                    </a>
+                    
+                    <a 
+                      href="https://exa.ai" 
+                      target="_blank" 
+                      rel="noopener"
+                      className="provider-link"
+                    >
+                      <div className="provider-info">
+                        <strong>Exa.ai</strong>
+                        <span>1000 Free Searches</span>
+                      </div>
+                      <span className="provider-arrow">→</span>
+                    </a>
+                  </div>
+
+                  <div className="byok-alert">
+                    <span className="alert-icon">⚠️</span>
+                    <div className="alert-text">
+                      <strong>No keys = No AI</strong>
+                      <p>All providers offer free tiers with no credit card required</p>
+                    </div>
+                  </div>
                 </div>
-                <p className="deploy-sovereignty">
-                  <strong>Sovereign AI</strong> - Your keys, your data, your infrastructure. Deploy to any Google Cloud region worldwide.
-                </p>
+              )}
+            </div>
+
+            {/* Deploy Info */}
+            <div className="deploy-info">
+              <h3>Deploy Your Own Sovereign Instance</h3>
+              <p className="deploy-description">
+                This is open-source code. Deploy with YOUR keys on YOUR infrastructure.
+              </p>
+              
+              <div className="deploy-links">
+                <a 
+                  href="https://github.com/applymytech/openElaraCloud" 
+                  target="_blank" 
+                  rel="noopener"
+                  className="deploy-link-card"
+                >
+                  <div className="deploy-icon">☁️</div>
+                  <div className="deploy-link-info">
+                    <strong>Cloud Version</strong>
+                    <span>This exact application</span>
+                  </div>
+                </a>
+                
+                <a 
+                  href="https://github.com/applymytech/openElara" 
+                  target="_blank" 
+                  rel="noopener"
+                  className="deploy-link-card"
+                >
+                  <div className="deploy-icon">🖥️</div>
+                  <div className="deploy-link-info">
+                    <strong>Desktop Version</strong>
+                    <span>With Code Studio</span>
+                  </div>
+                </a>
               </div>
+            </div>
+
+            {/* Footer */}
+            <div className="auth-footer">
+              <p>Sovereign AI • Your Keys • Your Data • Your Control</p>
+            </div>
+
+          </div>
         </div>
       </div>
 
       <style jsx>{`
+        /* ============================================
+           BASE & LAYOUT
+        ============================================ */
         .login-page {
           min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           position: relative;
           overflow: hidden;
           background: #0a0e1a;
+          color: var(--main-text-color, #ffffff);
         }
 
-        /* ... stars, orbs, background animations ... */
-        /* (keeping existing styles from original file) */
-
-        .login-content {
+        .login-container {
+          display: flex;
+          min-height: 100vh;
           position: relative;
           z-index: 10;
+        }
+
+        /* ============================================
+           ANIMATED BACKGROUND
+        ============================================ */
+        .stars-layer {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .stars-1 {
+          background-image: 
+            radial-gradient(2px 2px at 20px 30px, white, transparent),
+            radial-gradient(2px 2px at 60px 70px, white, transparent),
+            radial-gradient(1px 1px at 50px 50px, white, transparent),
+            radial-gradient(1px 1px at 130px 80px, white, transparent),
+            radial-gradient(2px 2px at 90px 10px, white, transparent);
+          background-size: 200px 200px;
+          animation: starsMove 120s linear infinite;
+          opacity: 0.4;
+        }
+
+        .stars-2 {
+          background-image: 
+            radial-gradient(1px 1px at 40px 60px, #00d4ff, transparent),
+            radial-gradient(2px 2px at 110px 90px, #a855f7, transparent),
+            radial-gradient(1px 1px at 150px 30px, white, transparent);
+          background-size: 300px 300px;
+          animation: starsMove 180s linear infinite;
+          opacity: 0.3;
+        }
+
+        .stars-3 {
+          background-image: 
+            radial-gradient(2px 2px at 70px 40px, #00d4ff, transparent),
+            radial-gradient(1px 1px at 20px 100px, #a855f7, transparent);
+          background-size: 250px 250px;
+          animation: starsMove 240s linear infinite reverse;
+          opacity: 0.2;
+        }
+
+        @keyframes starsMove {
+          from { background-position: 0 0; }
+          to { background-position: 600px 600px; }
+        }
+
+        .gradient-orb {
+          position: fixed;
+          border-radius: 50%;
+          filter: blur(120px);
+          pointer-events: none;
+          z-index: 1;
+          animation: orbFloat 20s ease-in-out infinite;
+        }
+
+        .orb-1 {
+          width: 500px;
+          height: 500px;
+          background: radial-gradient(circle, rgba(0, 212, 255, 0.15) 0%, transparent 70%);
+          top: -250px;
+          left: -250px;
+        }
+
+        .orb-2 {
+          width: 400px;
+          height: 400px;
+          background: radial-gradient(circle, rgba(168, 85, 247, 0.15) 0%, transparent 70%);
+          bottom: -200px;
+          right: -200px;
+          animation-delay: -10s;
+        }
+
+        .orb-3 {
+          width: 600px;
+          height: 600px;
+          background: radial-gradient(circle, rgba(0, 212, 255, 0.1) 0%, transparent 70%);
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          animation-delay: -5s;
+        }
+
+        @keyframes orbFloat {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33% { transform: translate(30px, -30px) scale(1.1); }
+          66% { transform: translate(-30px, 30px) scale(0.9); }
+        }
+
+        /* ============================================
+           HERO PANEL (Left Side - Desktop Only)
+        ============================================ */
+        .hero-panel {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 60px 40px;
+          background: linear-gradient(135deg, rgba(0, 212, 255, 0.03) 0%, rgba(168, 85, 247, 0.03) 100%);
+          border-right: 1px solid rgba(255, 255, 255, 0.05);
+          position: relative;
+          overflow: hidden;
+        }
+
+        .hero-content {
+          max-width: 600px;
+          width: 100%;
+        }
+
+        .brand-header {
+          display: flex;
+          align-items: center;
+          gap: 20px;
+          margin-bottom: 60px;
+        }
+
+        .brand-icon {
+          width: 72px;
+          height: 72px;
+          border-radius: 16px;
+          box-shadow: 0 0 40px rgba(0, 212, 255, 0.4);
+        }
+
+        .brand-text {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .brand-name {
+          font-size: 2.5rem;
+          font-weight: 700;
+          margin: 0;
+          background: linear-gradient(135deg, #00d4ff 0%, #a855f7 100%);
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .brand-tagline {
+          font-size: 1rem;
+          color: rgba(255, 255, 255, 0.6);
+          margin: 0;
+        }
+
+        /* Features Grid */
+        .features-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 20px;
+          margin-bottom: 40px;
+        }
+
+        .feature-card {
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
+          padding: 24px;
+          transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+          background: rgba(255, 255, 255, 0.04);
+          border-color: rgba(0, 212, 255, 0.3);
+          transform: translateY(-4px);
+        }
+
+        .feature-icon {
+          font-size: 2rem;
+          margin-bottom: 12px;
+        }
+
+        .feature-card h3 {
+          font-size: 1.1rem;
+          margin: 0 0 8px 0;
+          color: #ffffff;
+        }
+
+        .feature-card p {
+          font-size: 0.9rem;
+          line-height: 1.5;
+          color: rgba(255, 255, 255, 0.6);
+          margin: 0;
+        }
+
+        /* Trial Badge */
+        .trial-badge {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%);
+          border: 1px solid rgba(139, 92, 246, 0.3);
+          border-radius: 12px;
+          padding: 20px;
+        }
+
+        .trial-icon {
+          font-size: 2rem;
+          filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.5));
+        }
+
+        .trial-text strong {
+          display: block;
+          font-size: 1.1rem;
+          color: #a855f7;
+          margin-bottom: 4px;
+        }
+
+        .trial-text p {
+          margin: 0;
+          font-size: 0.9rem;
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* ============================================
+           AUTH PANEL (Right Side)
+        ============================================ */
+        .auth-panel {
           width: 100%;
           max-width: 520px;
-          padding: 32px 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 40px 32px;
+          background: rgba(10, 14, 26, 0.8);
+          backdrop-filter: blur(20px);
+          border-left: 1px solid rgba(255, 255, 255, 0.05);
         }
 
-        .byok-banner {
-          background: linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
-          border: 1px solid rgba(0, 212, 255, 0.3);
+        .auth-content {
+          width: 100%;
+          max-width: 420px;
+        }
+
+        /* Mobile Brand (Hidden on Desktop) */
+        .mobile-brand {
+          display: none;
+        }
+
+        /* Welcome Section */
+        .welcome-section {
+          margin-bottom: 32px;
+        }
+
+        .welcome-section h2 {
+          font-size: 1.75rem;
+          margin: 0 0 8px 0;
+          color: #ffffff;
+        }
+
+        .welcome-section p {
+          margin: 0;
+          color: rgba(255, 255, 255, 0.6);
+          font-size: 0.95rem;
+        }
+
+        /* Error Message */
+        .auth-error {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          background: rgba(239, 68, 68, 0.1);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          border-radius: 8px;
+          padding: 12px 16px;
+          margin-bottom: 20px;
+          color: #f87171;
+          font-size: 0.9rem;
+        }
+
+        .error-icon {
+          font-size: 1.2rem;
+        }
+
+        /* Google Sign In Button */
+        .google-signin-btn {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          padding: 14px 24px;
+          background: #ffffff;
+          border: none;
+          border-radius: 10px;
+          font-size: 1rem;
+          font-weight: 600;
+          color: #1f2937;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          margin-bottom: 28px;
+        }
+
+        .google-signin-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+        }
+
+        .google-signin-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .google-icon {
+          flex-shrink: 0;
+        }
+
+        /* BYOK Requirements */
+        .byok-requirements {
+          background: rgba(0, 212, 255, 0.05);
+          border: 1px solid rgba(0, 212, 255, 0.2);
           border-radius: 12px;
           padding: 16px;
-          margin: 24px 0;
-          cursor: pointer;
+          margin-bottom: 28px;
         }
 
-        .byok-banner-header {
+        .byok-header {
           display: flex;
-          justify-content: space-between;
           align-items: center;
+          justify-content: space-between;
+          cursor: pointer;
+          user-select: none;
+        }
+
+        .byok-title {
           font-weight: 600;
           color: #00d4ff;
           font-size: 0.95rem;
         }
 
-        .byok-banner-content {
+        .byok-chevron {
+          color: rgba(0, 212, 255, 0.6);
+          font-size: 0.8rem;
+          transition: transform 0.2s;
+        }
+
+        .byok-details {
           margin-top: 16px;
           padding-top: 16px;
-          border-top: 1px solid rgba(0, 212, 255, 0.2);
+          border-top: 1px solid rgba(0, 212, 255, 0.15);
+        }
+
+        .byok-intro {
           font-size: 0.9rem;
-          line-height: 1.6;
+          color: rgba(255, 255, 255, 0.8);
+          margin: 0 0 16px 0;
         }
 
-        .byok-banner-content ul {
-          margin: 12px 0;
-          padding-left: 20px;
-        }
-
-        .byok-banner-content a {
-          color: #00d4ff;
-          text-decoration: none;
-          font-weight: 600;
-        }
-
-        .byok-warning {
-          background: rgba(255, 193, 7, 0.1);
-          border-left: 3px solid #ffc107;
-          padding: 12px;
-          margin-top: 12px;
-          border-radius: 4px;
-        }
-
-        .trial-notice {
-          background: rgba(139, 92, 246, 0.1);
-          border: 1px solid rgba(139, 92, 246, 0.3);
-          border-radius: 12px;
-          padding: 16px;
-          margin-bottom: 24px;
-          text-align: center;
-        }
-
-        .trial-notice strong {
-          color: #8b5cf6;
-          font-size: 1.1rem;
-        }
-
-        .oauth-buttons {
+        .byok-providers {
           display: flex;
           flex-direction: column;
-          gap: 12px;
-          margin-bottom: 24px;
+          gap: 10px;
+          margin-bottom: 16px;
         }
 
-        .oauth-btn {
+        .provider-link {
           display: flex;
           align-items: center;
-          justify-content: center;
-          gap: 12px;
-          padding: 12px 24px;
+          justify-content: space-between;
+          padding: 12px;
+          background: rgba(0, 212, 255, 0.05);
+          border: 1px solid rgba(0, 212, 255, 0.2);
           border-radius: 8px;
-          font-weight: 600;
-          cursor: pointer;
+          color: inherit;
+          text-decoration: none;
           transition: all 0.2s ease;
-          border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .google-btn {
-          background: white;
-          color: #333;
+        .provider-link:hover {
+          background: rgba(0, 212, 255, 0.1);
+          border-color: rgba(0, 212, 255, 0.4);
+          transform: translateX(4px);
         }
 
-        .google-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        .provider-info {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
         }
 
-        .divider {
-          text-align: center;
-          margin: 24px 0;
-          position: relative;
+        .provider-info strong {
+          font-size: 0.95rem;
+          color: #ffffff;
         }
 
-        .divider::before,
-        .divider::after {
-          content: '';
-          position: absolute;
-          top: 50%;
-          width: 45%;
-          height: 1px;
-          background: rgba(255, 255, 255, 0.1);
-        }
-
-        .divider::before {
-          left: 0;
-        }
-
-        .divider::after {
-          right: 0;
-        }
-
-        .divider span {
-          background: #0a0e1a;
-          padding: 0 12px;
+        .provider-info span {
+          font-size: 0.8rem;
           color: rgba(255, 255, 255, 0.5);
-          font-size: 0.85rem;
         }
 
-        .forgot-password-btn {
-          background: none;
-          border: none;
+        .provider-arrow {
           color: #00d4ff;
-          cursor: pointer;
-          margin-top: 12px;
-          width: 100%;
-          text-align: center;
+          font-size: 1.2rem;
+        }
+
+        .byok-alert {
+          display: flex;
+          gap: 12px;
+          background: rgba(255, 193, 7, 0.1);
+          border: 1px solid rgba(255, 193, 7, 0.3);
+          border-radius: 8px;
+          padding: 12px;
+        }
+
+        .alert-icon {
+          font-size: 1.2rem;
+          flex-shrink: 0;
+        }
+
+        .alert-text strong {
+          display: block;
+          color: #fbbf24;
+          margin-bottom: 4px;
           font-size: 0.9rem;
         }
 
-        .deploy-notice {
-          margin-top: 32px;
-          padding: 24px;
-          background: rgba(0, 212, 255, 0.05);
-          border: 1px solid rgba(0, 212, 255, 0.2);
-          border-radius: 12px;
-          text-align: center;
+        .alert-text p {
+          margin: 0;
+          font-size: 0.85rem;
+          color: rgba(255, 255, 255, 0.7);
         }
 
-        .deploy-notice h3 {
-          color: #00d4ff;
-          margin-bottom: 12px;
+        /* Deploy Info */
+        .deploy-info {
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 24px;
+        }
+
+        .deploy-info h3 {
+          font-size: 1rem;
+          margin: 0 0 8px 0;
+          color: #ffffff;
+        }
+
+        .deploy-description {
+          font-size: 0.85rem;
+          color: rgba(255, 255, 255, 0.6);
+          margin: 0 0 16px 0;
+          line-height: 1.5;
         }
 
         .deploy-links {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 12px;
+        }
+
+        .deploy-link-card {
           display: flex;
           flex-direction: column;
-          gap: 12px;
-          margin: 16px 0;
-        }
-
-        .deploy-link {
-          display: block;
-          padding: 12px;
-          background: rgba(0, 212, 255, 0.1);
-          border: 1px solid rgba(0, 212, 255, 0.3);
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 16px 12px;
+          background: rgba(0, 212, 255, 0.05);
+          border: 1px solid rgba(0, 212, 255, 0.2);
           border-radius: 8px;
-          color: #00d4ff;
+          color: inherit;
           text-decoration: none;
-          font-weight: 600;
           transition: all 0.2s ease;
+          text-align: center;
         }
 
-        .deploy-link:hover {
-          background: rgba(0, 212, 255, 0.2);
-          transform: translateY(-2px);
+        .deploy-link-card:hover {
+          background: rgba(0, 212, 255, 0.1);
+          border-color: rgba(0, 212, 255, 0.4);
+          transform: translateY(-4px);
         }
 
-        .deploy-sovereignty {
-          margin-top: 16px;
+        .deploy-icon {
+          font-size: 2rem;
+        }
+
+        .deploy-link-info strong {
+          display: block;
           font-size: 0.9rem;
-          font-style: italic;
-          opacity: 0.8;
+          color: #ffffff;
+          margin-bottom: 2px;
+        }
+
+        .deploy-link-info span {
+          font-size: 0.75rem;
+          color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Footer */
+        .auth-footer {
+          text-align: center;
+          padding-top: 24px;
+          border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .auth-footer p {
+          margin: 0;
+          font-size: 0.85rem;
+          color: rgba(255, 255, 255, 0.4);
+        }
+
+        /* ============================================
+           RESPONSIVE (MOBILE)
+        ============================================ */
+        @media (max-width: 1024px) {
+          /* Hide hero panel on tablets and below */
+          .hero-panel {
+            display: none;
+          }
+
+          .login-container {
+            justify-content: center;
+          }
+
+          .auth-panel {
+            max-width: 100%;
+            border-left: none;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .auth-panel {
+            padding: 32px 24px;
+            background: rgba(10, 14, 26, 0.95);
+          }
+
+          .auth-content {
+            max-width: 100%;
+          }
+
+          /* Show mobile brand */
+          .mobile-brand {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 32px;
+          }
+
+          .mobile-brand-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+          }
+
+          .mobile-brand-text h1 {
+            font-size: 1.75rem;
+            margin: 0;
+            background: linear-gradient(135deg, #00d4ff 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+          }
+
+          .mobile-brand-text p {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.6);
+            margin: 4px 0 0 0;
+          }
+
+          .welcome-section h2 {
+            font-size: 1.5rem;
+          }
+
+          .deploy-links {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .auth-panel {
+            padding: 24px 16px;
+          }
+
+          .welcome-section {
+            margin-bottom: 24px;
+          }
+
+          .welcome-section h2 {
+            font-size: 1.35rem;
+          }
+
+          .google-signin-btn {
+            padding: 12px 20px;
+            font-size: 0.95rem;
+          }
+
+          .features-grid {
+            grid-template-columns: 1fr;
+            gap: 16px;
+          }
+
+          .byok-requirements {
+            padding: 14px;
+          }
+
+          .deploy-info {
+            padding: 16px;
+          }
         }
       `}</style>
     </div>

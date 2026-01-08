@@ -88,6 +88,8 @@ export default function Chat() {
   const [showContextCanvas, setShowContextCanvas] = useState(false);
   const [canvasTokenCount, setCanvasTokenCount] = useState(0);
   const [ctrlEnterSend, setCtrlEnterSend] = useState(true);
+  const [deepThoughtEnabled, setDeepThoughtEnabled] = useState(false);
+  const [deepThoughtTurns, setDeepThoughtTurns] = useState(10);
   const [moodEmoji, setMoodEmoji] = useState('😊');
   const [moodText, setMoodText] = useState('good, engaged');
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
@@ -523,6 +525,52 @@ export default function Chat() {
         }
       } catch (e) {
         console.warn('[Chat] Context Canvas load failed (continuing without):', e);
+      }
+      
+      // ================== DEEP THOUGHT MODE ==================
+      if (deepThoughtEnabled) {
+        try {
+          // Use Deep Thought engine for multi-turn agentic reasoning
+          const { executeDeepThought } = await import('../lib/deepThought');
+          
+          // Show thinking indicator
+          const thinkingMessage: ChatMessageWithMedia = {
+            role: "assistant",
+            content: "🧠 _Engaging Deep Thought mode... (analyzing with multiple reasoning turns)_",
+          };
+          setMessages((prev) => [...prev, thinkingMessage]);
+          
+          const deepThoughtResult = await executeDeepThought(messageText, {
+            maxTurns: deepThoughtTurns,
+            systemPrompt,
+          });
+          
+          // Replace thinking message with final result
+          setMessages((prev) => {
+            const withoutThinking = prev.slice(0, -1);
+            return [...withoutThinking, {
+              role: "assistant",
+              content: deepThoughtResult.finalResponse,
+              thinking: deepThoughtResult.thinkingProcess,
+            }];
+          });
+          
+          setSending(false);
+          return; // Exit early - Deep Thought handled
+        } catch (e) {
+          console.error('[Deep Thought] Error:', e);
+          setMessages((prev) => {
+            const withoutThinking = prev.filter(m => {
+              const content = typeof m.content === 'string' ? m.content : '';
+              return !content.includes('Engaging Deep Thought');
+            });
+            return [...withoutThinking, {
+              role: "assistant",
+              content: "⚠️ Deep Thought mode encountered an error. Falling back to regular chat...",
+            }];
+          });
+          // Fall through to regular chat on error
+        }
       }
       
       // Build the enriched user message with Context Canvas + RAG context + attached files
@@ -1245,6 +1293,31 @@ export default function Chat() {
             >
               {sending ? "..." : "Send"}
             </button>
+            
+            {/* Deep Thought Toggle */}
+            <div className="deep-thought-container">
+              <input 
+                type="checkbox" 
+                id="deep-thought-toggle" 
+                checked={deepThoughtEnabled}
+                onChange={(e) => setDeepThoughtEnabled(e.target.checked)}
+              />
+              <label htmlFor="deep-thought-toggle" title="Multi-turn agentic reasoning with tool calling">
+                🧠 Deep Thought
+              </label>
+              {deepThoughtEnabled && (
+                <input 
+                  type="number"
+                  className="deep-thought-turns"
+                  min="3"
+                  max="20"
+                  value={deepThoughtTurns}
+                  onChange={(e) => setDeepThoughtTurns(Math.min(20, Math.max(3, parseInt(e.target.value) || 10)))}
+                  title="Maximum reasoning turns (3-20)"
+                />
+              )}
+            </div>
+            
             {/* Keyboard Shortcut Toggle */}
             <div className="keyboard-shortcut-container">
               <input 
@@ -1872,6 +1945,47 @@ export default function Chat() {
           user-select: none;
         }
 
+        /* Deep Thought Toggle */
+        .deep-thought-container {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(0, 212, 255, 0.1) 100%);
+          border: 1px solid rgba(139, 92, 246, 0.3);
+          border-radius: var(--border-radius-md);
+          font-size: 13px;
+          color: var(--main-text-color);
+        }
+
+        .deep-thought-container input[type="checkbox"] {
+          cursor: pointer;
+          width: 16px;
+          height: 16px;
+        }
+
+        .deep-thought-container label {
+          cursor: pointer;
+          user-select: none;
+          font-weight: 500;
+        }
+
+        .deep-thought-turns {
+          width: 50px;
+          padding: 4px 6px;
+          background: var(--secondary-bg-color);
+          border: 1px solid var(--glass-border);
+          border-radius: var(--border-radius-sm);
+          color: var(--main-text-color);
+          font-size: 12px;
+          text-align: center;
+        }
+
+        .deep-thought-turns:focus {
+          outline: none;
+          border-color: var(--accent-color);
+        }
+
         .chat-form {
           display: flex;
           gap: 12px;
@@ -2337,10 +2451,22 @@ export default function Chat() {
             font-size: 0.85rem;
           }
 
-          /* Keyboard shortcut toggle */
+          /* Hide keyboard shortcut toggle on mobile - touch keyboards don't need Ctrl+Enter */
           .keyboard-shortcut-container {
-            font-size: 11px;
-            margin-top: 6px;
+            display: none;
+          }
+
+          /* Make Deep Thought toggle more prominent on mobile */
+          .deep-thought-container {
+            width: 100%;
+            justify-content: space-between;
+            margin-top: 8px;
+            padding: 12px;
+            font-size: 14px;
+          }
+
+          .deep-thought-container label {
+            font-size: 14px;
           }
         }
 

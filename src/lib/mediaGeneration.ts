@@ -148,7 +148,7 @@ function getModelParamSupport(modelId: string): {
 export async function generateImage(
   options: ImageGenerationOptions
 ): Promise<GeneratedImage> {
-  const togetherKey = getAPIKey('together');
+  const togetherKey = await getAPIKey('together');
   if (!togetherKey) {
     throw new Error('Together.ai API key required. Add it in Settings.');
   }
@@ -341,7 +341,7 @@ export interface AgenticSelfieResult {
 export async function generateAgenticSelfie(
   options: AgenticSelfieOptions
 ): Promise<AgenticSelfieResult> {
-  const togetherKey = getAPIKey('together');
+  const togetherKey = await getAPIKey('together');
   if (!togetherKey) {
     throw new Error('Together.ai API key required. Add it in Settings.');
   }
@@ -450,7 +450,7 @@ export async function generateAutonomousSelfie(options: {
   character?: Character;
   moodState?: MoodState | null;
 }): Promise<AgenticSelfieResult> {
-  const togetherKey = getAPIKey('together');
+  const togetherKey = await getAPIKey('together');
   if (!togetherKey) {
     throw new Error('Together.ai API key required. Add it in Settings.');
   }
@@ -791,7 +791,7 @@ export interface AgenticVideoResult {
 export async function generateAgenticVideo(
   options: AgenticVideoOptions
 ): Promise<AgenticVideoResult> {
-  const togetherKey = getAPIKey('together');
+  const togetherKey = await getAPIKey('together');
   if (!togetherKey) {
     throw new Error('Together.ai API key required. Add it in Settings.');
   }
@@ -888,7 +888,7 @@ export interface TTSOptions {
  * Generate speech using Together.ai Kokoro
  */
 export async function generateSpeech(options: TTSOptions): Promise<Blob> {
-  const togetherKey = getAPIKey('together');
+  const togetherKey = await getAPIKey('together');
   if (!togetherKey) {
     throw new Error('Together.ai API key required for TTS. Add it in Settings.');
   }

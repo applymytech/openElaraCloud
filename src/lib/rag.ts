@@ -116,7 +116,7 @@ function setCachedEmbedding(text: string, embedding: number[]): void {
  * Uses M2-BERT-32k which is available on Together.ai
  */
 export async function getEmbedding(text: string): Promise<number[]> {
-  const apiKey = getAPIKey('together');
+  const apiKey = await getAPIKey('together');
   
   if (!apiKey) {
     throw new Error('Together.ai API Key required for embeddings. Configure in Settings → API Keys.');

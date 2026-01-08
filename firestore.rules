@@ -12,27 +12,34 @@ service cloud.firestore {
       return request.auth.uid == userId;
     }
     
-    // Helper function: Check if trial is expired (7 days from account creation)
-    function isTrialExpired(userData) {
-      return userData.trialExpiresAt != null && 
-             request.time > userData.trialExpiresAt;
-    }
-    
     // ========================================
     // USER PROFILES
     // ========================================
     match /users/{userId} {
-      // Simple: authenticated users can access their own data
-      // Trial enforcement happens at login (app level), not here
-      allow read, write: if isAuthenticated() && isOwner(userId);
+      // Authenticated users can access their own data
+      // Trial enforcement happens at app level (frontend + Cloud Functions)
+      allow read: if isAuthenticated() && isOwner(userId);
+      
+      // Write with size validation (prevent abuse)
+      allow write: if isAuthenticated() && 
+                      isOwner(userId) &&
+                      request.resource.size() < 500000; // 500KB max per doc
       
       // All subcollections
       match /{subcollection}/{docId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
+        allow read: if isAuthenticated() && isOwner(userId);
+        
+        // Limit subcollection document size
+        allow write: if isAuthenticated() && 
+                        isOwner(userId) &&
+                        request.resource.size() < 500000;
         
         // Nested collections
         match /{nestedCollection}/{nestedDocId} {
-          allow read, write: if isAuthenticated() && isOwner(userId);
+          allow read: if isAuthenticated() && isOwner(userId);
+          allow write: if isAuthenticated() && 
+                          isOwner(userId) &&
+                          request.resource.size() < 500000;
         }
       }
     }
@@ -43,6 +50,13 @@ service cloud.firestore {
     match /public/{document=**} {
       allow read: if isAuthenticated();
       allow write: if false; // Admin only via admin SDK
+    }
+    
+    // ========================================
+    // RATE LIMITING (internal, functions only)
+    // ========================================
+    match /_rateLimits/{limitId} {
+      allow read, write: if false; // Functions only
     }
     
     // ========================================

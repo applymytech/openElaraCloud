@@ -176,7 +176,7 @@ export function getModelMaxTextLength(model: string): number {
  * @returns TTSResult with audio data or error
  */
 export async function generateSpeech(text: string, options: TTSOptions = {}): Promise<TTSResult> {
-  const apiKey = getAPIKey('together');
+  const apiKey = await getAPIKey('together');
   
   if (!apiKey) {
     return { 

@@ -73,6 +73,7 @@ export default function Account() {
   const [downloading, setDownloading] = useState<string | null>(null);
   
   // Password change state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -100,8 +101,9 @@ export default function Account() {
         setProfile(userSnap.data() as UserProfile);
       }
       
-      // Load API keys
-      setApiKeys(getAllAPIKeys());
+      // Load API keys (async)
+      const keys = await getAllAPIKeys();
+      setApiKeys(keys);
       
       // Load custom endpoints
       setCustomEndpoints(getAllCustomEndpoints());
@@ -135,11 +137,11 @@ export default function Account() {
     router.push("/");
   };
 
-  const handleSaveKeys = () => {
-    // Save each key individually
-    Object.entries(apiKeys).forEach(([provider, key]) => {
-      saveAPIKey(provider as keyof APIKeys, key || '');
-    });
+  const handleSaveKeys = async () => {
+    // Save each key individually (async)
+    for (const [provider, key] of Object.entries(apiKeys)) {
+      await saveAPIKey(provider as keyof APIKeys, key || '');
+    }
     setKeysSaved(true);
     setTimeout(() => setKeysSaved(false), 3000);
   };
@@ -226,6 +228,12 @@ export default function Account() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      
+      // Close modal after 1.5 seconds to show success message
+      setTimeout(() => {
+        setShowPasswordModal(false);
+        setPasswordSuccess('');
+      }, 1500);
     } catch (error: any) {
       if (error.code === 'auth/wrong-password') {
         setPasswordError('Current password is incorrect');
@@ -454,54 +462,16 @@ export default function Account() {
                     )}
                   </div>
 
-                  {/* Password Change Card */}
+                  {/* Password Change Button */}
                   <div className="account-card">
-                    <h3>🔐 Change Password</h3>
-                    <form onSubmit={handlePasswordChange} className="password-form">
-                      {passwordError && <div className="form-error">⚠️ {passwordError}</div>}
-                      {passwordSuccess && <div className="form-success">✓ {passwordSuccess}</div>}
-                      
-                      <div className="form-group">
-                        <label className="nexus-label">Current Password</label>
-                        <input
-                          type="password"
-                          className="nexus-input"
-                          value={currentPassword}
-                          onChange={(e) => setCurrentPassword(e.target.value)}
-                          placeholder="••••••••"
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label className="nexus-label">New Password</label>
-                        <input
-                          type="password"
-                          className="nexus-input"
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                          placeholder="••••••••"
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label className="nexus-label">Confirm New Password</label>
-                        <input
-                          type="password"
-                          className="nexus-input"
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          placeholder="••••••••"
-                          required
-                        />
-                      </div>
-                      <button 
-                        type="submit" 
-                        className="nexus-btn nexus-btn-secondary"
-                        disabled={changingPassword}
-                      >
-                        {changingPassword ? 'Changing...' : 'Change Password'}
-                      </button>
-                    </form>
+                    <h3>🔐 Password & Security</h3>
+                    <p className="card-description">Manage your account password</p>
+                    <button 
+                      className="nexus-btn nexus-btn-secondary"
+                      onClick={() => setShowPasswordModal(true)}
+                    >
+                      Change Password
+                    </button>
                   </div>
                 </div>
               </div>
@@ -931,6 +901,77 @@ export default function Account() {
             </button>
           </div>
         </div>
+
+        {/* Password Change Modal */}
+        {showPasswordModal && (
+          <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>🔐 Change Password</h2>
+                <button className="modal-close" onClick={() => setShowPasswordModal(false)}>✕</button>
+              </div>
+              
+              <form onSubmit={handlePasswordChange} className="modal-form">
+                {passwordError && <div className="form-error">⚠️ {passwordError}</div>}
+                {passwordSuccess && <div className="form-success">✓ {passwordSuccess}</div>}
+                
+                <div className="form-group">
+                  <label className="nexus-label">Current Password</label>
+                  <input
+                    type="password"
+                    className="nexus-input"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    autoFocus
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label className="nexus-label">New Password</label>
+                  <input
+                    type="password"
+                    className="nexus-input"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label className="nexus-label">Confirm New Password</label>
+                  <input
+                    type="password"
+                    className="nexus-input"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
+                
+                <div className="modal-actions">
+                  <button 
+                    type="button"
+                    className="nexus-btn nexus-btn-secondary"
+                    onClick={() => setShowPasswordModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="nexus-btn nexus-btn-primary"
+                    disabled={changingPassword}
+                  >
+                    {changingPassword ? 'Changing...' : 'Change Password'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </main>
 
       <style jsx>{`
@@ -1906,6 +1947,135 @@ export default function Account() {
           border-radius: 10px;
           font-size: 0.75rem;
           color: white;
+        }
+
+        /* Password Change Modal */
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(8px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          animation: fadeIn 0.2s ease-out;
+        }
+
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+
+        .modal-content {
+          background: var(--secondary-bg-color);
+          border: 1px solid var(--glass-border);
+          border-radius: var(--border-radius-lg);
+          padding: 0;
+          max-width: 500px;
+          width: 90%;
+          max-height: 90vh;
+          overflow-y: auto;
+          box-shadow: var(--glow-primary);
+          animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+          from {
+            transform: translateY(20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+
+        .modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: var(--spacing-lg);
+          border-bottom: 1px solid var(--glass-border);
+        }
+
+        .modal-header h2 {
+          margin: 0;
+          font-size: 1.25rem;
+          background: linear-gradient(135deg, #00d4ff, #00ff88);
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .modal-close {
+          background: none;
+          border: none;
+          color: var(--secondary-text-color);
+          font-size: 1.5rem;
+          cursor: pointer;
+          padding: 0;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+          background: var(--glass-bg-primary);
+          color: var(--main-text-color);
+        }
+
+        .modal-form {
+          padding: var(--spacing-lg);
+          display: flex;
+          flex-direction: column;
+          gap: var(--spacing-md);
+        }
+
+        .form-error {
+          background: rgba(239, 68, 68, 0.1);
+          border: 1px solid var(--color-danger);
+          color: var(--color-danger);
+          padding: var(--spacing-sm);
+          border-radius: var(--border-radius-md);
+          font-size: 0.875rem;
+        }
+
+        .form-success {
+          background: rgba(34, 197, 94, 0.1);
+          border: 1px solid var(--color-success);
+          color: var(--color-success);
+          padding: var(--spacing-sm);
+          border-radius: var(--border-radius-md);
+          font-size: 0.875rem;
+        }
+
+        .form-group {
+          display: flex;
+          flex-direction: column;
+          gap: var(--spacing-xs);
+        }
+
+        .modal-actions {
+          display: flex;
+          gap: var(--spacing-sm);
+          justify-content: flex-end;
+          margin-top: var(--spacing-md);
+        }
+
+        .modal-actions button {
+          min-width: 100px;
         }
 
         /* Responsive */

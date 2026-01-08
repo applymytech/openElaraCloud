@@ -31,9 +31,6 @@ const TRIAL_ENFORCEMENT_ENABLED = true;
 // Cache secrets to avoid repeated lookups
 const secretCache: Map<string, { value: string; expiry: number }> = new Map();
 
-// Rate limiting cache (in-memory, resets on cold start)
-const rateLimitCache: Map<string, { count: number; resetAt: number }> = new Map();
-
 /**
  * Get a secret from Google Secret Manager
  */
@@ -99,39 +96,75 @@ async function checkTrialStatus(userId: string): Promise<{ valid: boolean; error
 
     return { valid: true };
   } catch (error) {
-    console.error('Trial check failed:', error);
+    functions.logger.error('Trial check failed:', error);
     // Fail open - don't block users if check fails
     return { valid: true };
   }
 }
 
 /**
- * Rate limiting check
+ * Rate limiting check using Firestore (persists across cold starts)
  * Returns true if request should be blocked
  */
-function checkRateLimit(userId: string): { blocked: boolean; error?: string } {
+async function checkRateLimit(userId: string): Promise<{ blocked: boolean; error?: string }> {
   const now = Date.now();
-  const key = `${userId}:${Math.floor(now / 60000)}`; // Per-minute bucket
+  const bucketId = `${userId}_${Math.floor(now / 60000)}`; // Per-minute bucket
   
-  let entry = rateLimitCache.get(key);
-  
-  if (!entry || entry.resetAt < now) {
-    // New bucket
-    entry = { count: 1, resetAt: now + 60000 };
-    rateLimitCache.set(key, entry);
+  try {
+    const rateLimitRef = admin.firestore().collection('_rateLimits').doc(bucketId);
+    
+    // Use transaction to ensure atomic increment
+    const result = await admin.firestore().runTransaction(async (transaction) => {
+      const doc = await transaction.get(rateLimitRef);
+      
+      if (!doc.exists) {
+        // Create new bucket
+        transaction.set(rateLimitRef, {
+          userId,
+          count: 1,
+          resetAt: now + 60000,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return { count: 1, blocked: false };
+      }
+      
+      const data = doc.data();
+      const newCount = (data?.count || 0) + 1;
+      
+      // Check if bucket expired
+      if (data?.resetAt && data.resetAt < now) {
+        // Reset bucket
+        transaction.set(rateLimitRef, {
+          userId,
+          count: 1,
+          resetAt: now + 60000,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return { count: 1, blocked: false };
+      }
+      
+      // Increment count
+      transaction.update(rateLimitRef, { count: newCount });
+      
+      return {
+        count: newCount,
+        blocked: newCount > RATE_LIMIT_PER_MINUTE,
+      };
+    });
+    
+    if (result.blocked) {
+      return {
+        blocked: true,
+        error: `Rate limit exceeded. Maximum ${RATE_LIMIT_PER_MINUTE} requests per minute.`,
+      };
+    }
+    
+    return { blocked: false };
+  } catch (error) {
+    functions.logger.error('Rate limit check failed:', error);
+    // Fail open - don't block users if rate limit check fails
     return { blocked: false };
   }
-  
-  entry.count++;
-  
-  if (entry.count > RATE_LIMIT_PER_MINUTE) {
-    return {
-      blocked: true,
-      error: `Rate limit exceeded. Maximum ${RATE_LIMIT_PER_MINUTE} requests per minute.`,
-    };
-  }
-  
-  return { blocked: false };
 }
 
 /**
@@ -195,7 +228,7 @@ export const aiChat = functions.https.onRequest(async (req, res) => {
   }
 
   // Check rate limit
-  const rateLimit = checkRateLimit(user.uid);
+  const rateLimit = await checkRateLimit(user.uid);
   if (rateLimit.blocked) {
     res.status(429).json({ error: rateLimit.error });
     return;
@@ -294,7 +327,7 @@ export const generateImage = functions.https.onRequest(async (req, res) => {
   }
 
   // Check rate limit
-  const rateLimit = checkRateLimit(user.uid);
+  const rateLimit = await checkRateLimit(user.uid);
   if (rateLimit.blocked) {
     res.status(429).json({ error: rateLimit.error });
     return;
@@ -364,7 +397,7 @@ export const generateVideo = functions.https.onRequest(async (req, res) => {
   }
 
   // Check rate limit
-  const rateLimit = checkRateLimit(user.uid);
+  const rateLimit = await checkRateLimit(user.uid);
   if (rateLimit.blocked) {
     res.status(429).json({ error: rateLimit.error });
     return;

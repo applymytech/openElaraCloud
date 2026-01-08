@@ -71,11 +71,13 @@ export interface ResearchStatus {
 // API KEY CHECK
 // ============================================================================
 
+import { getAPIKeySync } from './byok';
+
 /**
  * Check if Exa.ai API key is configured
  */
 export function isExaConfigured(): boolean {
-  const key = getAPIKey('exa');
+  const key = getAPIKeySync('exa');
   return !!key && key.length > 0;
 }
 
@@ -83,7 +85,7 @@ export function isExaConfigured(): boolean {
  * Get Exa API key (throws if not configured)
  */
 function getExaKey(): string {
-  const key = getAPIKey('exa');
+  const key = getAPIKeySync('exa');
   if (!key) {
     throw new Error('Exa.ai API key not configured. Add your key in Settings → API Keys.');
   }

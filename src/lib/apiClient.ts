@@ -46,9 +46,22 @@ export interface ToolCall {
   };
 }
 
+export interface Tool {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, any>;
+      required: string[];
+    };
+  };
+}
+
 export interface ModelConfig {
   modelId: string;
-  provider: 'together' | 'openrouter';
+  provider: 'together' | 'openrouter' | 'custom';
   displayName?: string;
 }
 
@@ -58,6 +71,8 @@ export interface ChatPayload {
   temperature?: number;
   maxTokens?: number;
   ragContext?: string;
+  tools?: Tool[];
+  tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
 }
 
 export interface ChatResponse {
@@ -681,7 +696,7 @@ export async function routeChat(payload: ChatPayload): Promise<ChatResponse> {
   
   switch (provider) {
     case 'together': {
-      const apiKey = getAPIKey('together');
+      const apiKey = await getAPIKey('together');
       if (!apiKey) {
         return { success: false, error: 'Together.ai API key not configured. Add it in Settings.' };
       }
@@ -689,7 +704,7 @@ export async function routeChat(payload: ChatPayload): Promise<ChatResponse> {
     }
     
     case 'openrouter': {
-      const apiKey = getAPIKey('openrouter');
+      const apiKey = await getAPIKey('openrouter');
       if (!apiKey) {
         return { success: false, error: 'OpenRouter API key not configured. Add it in Settings.' };
       }
@@ -717,12 +732,12 @@ export async function routeChat(payload: ChatPayload): Promise<ChatResponse> {
     
     default: {
       // Try together first, then openrouter
-      const togetherKey = getAPIKey('together');
+      const togetherKey = await getAPIKey('together');
       if (togetherKey) {
         return chatWithTogether(togetherKey, payload);
       }
       
-      const openrouterKey = getAPIKey('openrouter');
+      const openrouterKey = await getAPIKey('openrouter');
       if (openrouterKey) {
         return chatWithOpenRouter(openrouterKey, payload);
       }
@@ -743,7 +758,7 @@ export async function routeChat(payload: ChatPayload): Promise<ChatResponse> {
  * Uses user-selected model or defaults to free tier
  */
 export async function generateImage(payload: ImagePayload): Promise<ImageResponse> {
-  const apiKey = getAPIKey('together');
+  const apiKey = await getAPIKey('together');
   if (!apiKey) {
     return { success: false, error: 'Together.ai API key required for image generation. Add it in Settings.' };
   }
@@ -823,9 +838,9 @@ export { hasOwnKeys, getAPIKey, getAllAPIKeys } from './byok';
  */
 export async function chat(
   messages: ChatMessage[],
-  options: { model?: string; temperature?: number; maxTokens?: number } = {}
+  options: { model?: string; temperature?: number; maxTokens?: number; tools?: Tool[]; tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } } } = {}
 ): Promise<{ 
-  choices: Array<{ message: { role: string; content: string; thinking?: string } }>;
+  choices: Array<{ message: { role: string; content: string; thinking?: string; tool_calls?: ToolCall[] } }>;
   thinking?: string;
 }> {
   // Get the model: explicit > user selection > default
@@ -842,6 +857,8 @@ export async function chat(
     },
     temperature: options.temperature,
     maxTokens: options.maxTokens,
+    tools: options.tools,
+    tool_choice: options.tool_choice,
   };
   
   const result = await routeChat(payload);
@@ -850,13 +867,14 @@ export async function chat(
     throw new Error(result.error || 'Chat failed');
   }
   
-  // Return in OpenAI-compatible format with thinking preserved
+  // Return in OpenAI-compatible format with thinking and tool_calls preserved
   return {
     choices: [{
       message: {
         role: 'assistant',
         content: result.answer || '',
         thinking: result.thinking,
+        tool_calls: result.toolCalls,
       },
     }],
     thinking: result.thinking,

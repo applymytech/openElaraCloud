@@ -60,7 +60,9 @@ export function getFirebaseConfig(): FirebaseConfig | null {
     ) {
       // We're deployed but config is missing - this should never happen
       // Firebase Hosting automatically injects config
-      console.error('[Firebase] Deployed but config missing - check hosting setup');
+      if (typeof window !== 'undefined' && window.console) {
+        window.console.error('[Firebase] Deployed but config missing - check hosting setup');
+      }
     }
   }
 
