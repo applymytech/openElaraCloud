@@ -156,8 +156,17 @@ async function verifyAuth(request: functions.https.Request): Promise<admin.auth.
 // ============================================================================
 
 export const aiChat = functions.https.onRequest(async (req, res) => {
-  // CORS
-  res.set("Access-Control-Allow-Origin", "*");
+  // CORS - Restrict to Firebase hosting domains only
+  const origin = req.headers.origin || '';
+  const allowedOrigins = [
+    'https://openelaracloud.web.app',
+    'https://openelaracloud.firebaseapp.com',
+    'http://localhost:3000', // Local dev
+  ];
+  
+  if (allowedOrigins.includes(origin)) {
+    res.set("Access-Control-Allow-Origin", origin);
+  }
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
   
@@ -247,7 +256,17 @@ export const aiChat = functions.https.onRequest(async (req, res) => {
 // ============================================================================
 
 export const generateImage = functions.https.onRequest(async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "*");
+  // CORS - Restrict to Firebase hosting domains only
+  const origin = req.headers.origin || '';
+  const allowedOrigins = [
+    'https://openelaracloud.web.app',
+    'https://openelaracloud.firebaseapp.com',
+    'http://localhost:3000',
+  ];
+  
+  if (allowedOrigins.includes(origin)) {
+    res.set("Access-Control-Allow-Origin", origin);
+  }
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
   

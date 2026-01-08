@@ -144,9 +144,6 @@ export default function Account() {
     setTimeout(() => setKeysSaved(false), 3000);
   };
 
-  const handleClearKeys = () => {
-    
-
   const handleSaveEndpoint = (endpoint: CustomEndpoint) => {
     saveCustomEndpoint(endpoint);
     setCustomEndpoints(getAllCustomEndpoints());
@@ -169,7 +166,10 @@ export default function Account() {
   const handleSetActiveEndpoint = (name: string) => {
     setActiveEndpoint(name);
     setActiveEndpointName(name);
-  };if (confirm('Are you sure you want to clear all API keys?')) {
+  };
+
+  const handleClearKeys = () => {
+    if (confirm('Are you sure you want to clear all API keys?')) {
       clearAllKeys();
       setApiKeys({ together: '', openrouter: '', exa: '' });
     }
@@ -513,6 +513,25 @@ export default function Account() {
                 <div className="byok-header">
                   <h2>🔑 Bring Your Own Keys (BYOK)</h2>
                   <p>Enter your API keys for direct access to AI providers. Keys are stored locally in your browser.</p>
+                  
+                  {/* Security Warning */}
+                  <div className="security-warning">
+                    <div className="warning-header">
+                      <span className="warning-icon">🔓</span>
+                      <h4>Security Notice</h4>
+                    </div>
+                    <ul>
+                      <li><strong>Keys are NOT encrypted</strong> - stored in browser localStorage as plain text</li>
+                      <li><strong>Same-Origin Policy protection</strong> - only accessible by this domain</li>
+                      <li><strong>Vulnerable to XSS</strong> - malicious scripts could potentially access keys</li>
+                      <li><strong>Browser extensions</strong> - some extensions can read localStorage</li>
+                      <li><strong>Never share keys</strong> - treat them like passwords, rotate regularly</li>
+                    </ul>
+                    <p className="warning-footer">
+                      💡 <strong>Tip:</strong> Use limited-scope API keys with spending limits when possible. 
+                      If your provider supports key restrictions, enable them.
+                    </p>
+                  </div>
                 </div>
 
                 {keysSaved && (
@@ -1300,6 +1319,56 @@ export default function Account() {
         }
 
         .byok-header p {
+          color: var(--secondary-text-color);
+        }
+
+        /* Security Warning */
+        .security-warning {
+          margin-top: var(--spacing-lg);
+          padding: var(--spacing-lg);
+          background: linear-gradient(135deg, rgba(255, 87, 51, 0.1), rgba(255, 120, 85, 0.1));
+          border-left: 4px solid var(--warning-color);
+          border-radius: var(--border-radius);
+          backdrop-filter: blur(10px);
+        }
+
+        .warning-header {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-sm);
+          margin-bottom: var(--spacing-md);
+        }
+
+        .warning-icon {
+          font-size: 1.5rem;
+        }
+
+        .warning-header h4 {
+          margin: 0;
+          color: var(--warning-color);
+          font-weight: 600;
+        }
+
+        .security-warning ul {
+          margin: var(--spacing-md) 0;
+          padding-left: var(--spacing-lg);
+          line-height: 1.8;
+        }
+
+        .security-warning li {
+          color: var(--text-color);
+          margin-bottom: var(--spacing-xs);
+        }
+
+        .security-warning strong {
+          color: var(--warning-color);
+        }
+
+        .warning-footer {
+          margin-top: var(--spacing-md);
+          padding-top: var(--spacing-md);
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          font-size: 0.9rem;
           color: var(--secondary-text-color);
         }
 
