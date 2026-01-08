@@ -274,18 +274,18 @@ export default function Login() {
               <span>{isLoggingIn ? 'Signing In...' : 'Continue with Google'}</span>
             </button>
 
-            {/* Desktop Download Button */}
+            {/* PWA Install Button (Mobile & Desktop) */}
             {showInstallButton && (
               <button 
                 onClick={handleInstallApp}
                 className="desktop-download-btn"
               >
-                <span className="download-icon">💻</span>
+                <span className="download-icon">📱</span>
                 <div className="download-text">
-                  <strong>Install as App</strong>
-                  <span>Windows, macOS, Android, iOS</span>
+                  <strong>Install App</strong>
+                  <span>Add to Home Screen</span>
                 </div>
-                <span className="download-arrow">→</span>
+                <span className="download-arrow">+</span>
               </button>
             )}
 
@@ -1058,6 +1058,23 @@ export default function Login() {
           .google-signin-btn {
             padding: 12px 20px;
             font-size: 0.95rem;
+          }
+
+          .desktop-download-btn {
+            padding: 14px 18px;
+            gap: 12px;
+          }
+
+          .download-icon {
+            font-size: 24px;
+          }
+
+          .download-text strong {
+            font-size: 15px;
+          }
+
+          .download-text span {
+            font-size: 12px;
           }
 
           .features-grid {

@@ -883,7 +883,7 @@ export default function Account() {
                       <a href="/TERMS.md" target="_blank" className="about-link">
                         📜 Terms of Service
                       </a>
-                      <a href="https://github.com/AlgorithmArts/openElara" target="_blank" rel="noopener" className="about-link">
+                      <a href="https://github.com/applymytech/openElaraCloud" target="_blank" rel="noopener" className="about-link">
                         💻 GitHub
                       </a>
                     </div>
