@@ -15,6 +15,8 @@
 // ============================================================================
 
 const KEY_PREFIX = 'elara_apikey_';
+const CUSTOM_ENDPOINTS_KEY = 'elara_custom_endpoints';
+const ACTIVE_ENDPOINT_KEY = 'elara_active_endpoint';
 
 // ============================================================================
 // TYPES
@@ -27,6 +29,27 @@ export interface APIKeys {
 }
 
 export type APIKeyProvider = keyof APIKeys;
+
+/**
+ * CustomEndpoint - BYOEndpoint configuration
+ * 
+ * Allows users to ATTEMPT connecting to ANY chat LLM by providing endpoints.
+ * 
+ * ⚠️ DISCLAIMER: This only works if the endpoint follows OpenAI REST API standards.
+ * No guarantees about any specific provider. Chat only - NOT for images/videos.
+ * If it doesn't work, that's on the user to debug their endpoint.
+ */
+export interface CustomEndpoint {
+  name: string;                  // User-friendly name (generic, e.g., "My Custom API")
+  apiKey: string;                // API key (can be empty for some endpoints)
+  baseUrl?: string;              // Base URL (e.g., https://api.example.com)
+  modelsEndpoint?: string;       // Custom /models path (optional, rarely used)
+  chatEndpoint?: string;         // Custom /chat/completions path (optional)
+  customPayload?: string;        // JSON additions (e.g., '{"nsfw": true}')
+  overridePayload?: boolean;     // If true, use payloadTemplate instead of standard
+  payloadTemplate?: string;      // Full payload template with placeholders
+  enabled?: boolean;             // Whether this endpoint is active
+}
 
 // ============================================================================
 // KEY MANAGEMENT
@@ -119,4 +142,105 @@ export function clearAllKeys(): void {
  */
 export function hasExaKey(): boolean {
   return !!getAPIKey('exa');
+}
+
+// ============================================================================
+// CUSTOM ENDPOINT MANAGEMENT (BYOEndpoint)
+// ============================================================================
+
+/**
+ * Save a custom endpoint configuration
+ */
+export function saveCustomEndpoint(endpoint: CustomEndpoint): void {
+  if (typeof window === 'undefined') return;
+  
+  const endpoints = getAllCustomEndpoints();
+  const existingIndex = endpoints.findIndex(e => e.name === endpoint.name);
+  
+  if (existingIndex >= 0) {
+    endpoints[existingIndex] = endpoint;
+  } else {
+    endpoints.push(endpoint);
+  }
+  
+  localStorage.setItem(CUSTOM_ENDPOINTS_KEY, JSON.stringify(endpoints));
+}
+
+/**
+ * Get a specific custom endpoint by name
+ */
+export function getCustomEndpoint(name: string): CustomEndpoint | null {
+  if (typeof window === 'undefined') return null;
+  
+  const endpoints = getAllCustomEndpoints();
+  return endpoints.find(e => e.name === name) || null;
+}
+
+/**
+ * Get all custom endpoints
+ */
+export function getAllCustomEndpoints(): CustomEndpoint[] {
+  if (typeof window === 'undefined') return [];
+  
+  try {
+    const stored = localStorage.getItem(CUSTOM_ENDPOINTS_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('[BYOK] Failed to load custom endpoints:', error);
+  }
+  
+  return [];
+}
+
+/**
+ * Remove a custom endpoint
+ */
+export function removeCustomEndpoint(name: string): void {
+  if (typeof window === 'undefined') return;
+  
+  const endpoints = getAllCustomEndpoints();
+  const filtered = endpoints.filter(e => e.name !== name);
+  
+  localStorage.setItem(CUSTOM_ENDPOINTS_KEY, JSON.stringify(filtered));
+  
+  // If this was the active endpoint, clear it
+  const active = getActiveEndpoint();
+  if (active === name) {
+    clearActiveEndpoint();
+  }
+}
+
+/**
+ * Set the active endpoint (provider name or custom endpoint name)
+ */
+export function setActiveEndpoint(name: 'together' | 'openrouter' | string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(ACTIVE_ENDPOINT_KEY, name);
+}
+
+/**
+ * Get the currently active endpoint
+ * Returns 'together', 'openrouter', or a custom endpoint name
+ */
+export function getActiveEndpoint(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(ACTIVE_ENDPOINT_KEY);
+}
+
+/**
+ * Clear the active endpoint selection
+ */
+export function clearActiveEndpoint(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(ACTIVE_ENDPOINT_KEY);
+}
+
+/**
+ * Check if a custom endpoint is configured and active
+ */
+export function hasCustomEndpoint(): boolean {
+  const endpoints = getAllCustomEndpoints();
+  return endpoints.some(e => e.enabled !== false);
 }

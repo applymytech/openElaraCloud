@@ -48,6 +48,7 @@ const KnowledgePanel = dynamic(() => import('@/components/KnowledgePanel'), { ss
 const StorageManager = dynamic(() => import('@/components/StorageManager'), { ssr: false });
 const PowerKnowledge = dynamic(() => import('@/components/PowerKnowledge'), { ssr: false });
 const FileConverter = dynamic(() => import('@/components/FileConverter'), { ssr: false });
+const MessageContent = dynamic(() => import('@/components/MessageContent'), { ssr: false });
 const ContextCanvas = dynamic(() => import('@/components/ContextCanvas'), { ssr: false });
 
 // Extended message type to support images and thinking
@@ -1089,11 +1090,13 @@ export default function Chat() {
                 </details>
               )}
               
-              <div style={{ whiteSpace: "pre-wrap" }}>
-                {typeof msg.content === 'string' 
+              {/* Render message content with markdown support */}
+              <MessageContent
+                content={typeof msg.content === 'string' 
                   ? msg.content 
                   : msg.content.find(p => p.type === 'text')?.text || ''}
-              </div>
+                role={msg.role}
+              />
               
               {/* Render generated image if present */}
               {(msg as ChatMessageWithMedia).image && (

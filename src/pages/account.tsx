@@ -13,7 +13,7 @@ import { useEffect, useState } from "react";
 import dynamic from 'next/dynamic';
 import ELARA from "@/lib/elara";
 import { APP_VERSION, MANUAL_VERSION, LAST_UPDATED } from "@/lib/userManual";
-import { getAllAPIKeys, saveAPIKey, clearAllKeys, APIKeys, hasOwnKeys, hasTogetherKey, hasExaKey } from "@/lib/byok";
+import { getAllAPIKeys, saveAPIKey, clearAllKeys, APIKeys, hasOwnKeys, hasTogetherKey, hasExaKey, type CustomEndpoint, getAllCustomEndpoints, saveCustomEndpoint, removeCustomEndpoint, getActiveEndpoint, setActiveEndpoint } from "@/lib/byok";
 import { getDefaultChatModel, setSelectedModel as saveModelSelection, CHAT_MODEL_METADATA } from "@/lib/models";
 import { getStorageStatus, formatBytes as formatStorageBytes, cutMedia, deleteMedia, type StorageStatus, type StoredMedia } from "@/lib/storage";
 import { getMoodTracker } from "@/lib/mood";
@@ -22,6 +22,7 @@ import { getActiveCharacter, type Character } from "@/lib/characters";
 // Dynamic imports to avoid SSR issues
 const CharacterEditor = dynamic(() => import('@/components/CharacterEditor'), { ssr: false });
 const KnowledgePanel = dynamic(() => import('@/components/KnowledgePanel'), { ssr: false });
+const CustomEndpointModal = dynamic(() => import('@/components/CustomEndpointModal'), { ssr: false });
 
 type TabId = 'account' | 'apikeys' | 'characters' | 'knowledge' | 'about';
 
@@ -52,6 +53,12 @@ export default function Account() {
   const [apiKeys, setApiKeys] = useState<APIKeys>({ together: '', openrouter: '', exa: '' });
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [keysSaved, setKeysSaved] = useState(false);
+  
+  // Custom Endpoints state
+  const [customEndpoints, setCustomEndpoints] = useState<CustomEndpoint[]>([]);
+  const [showEndpointModal, setShowEndpointModal] = useState(false);
+  const [editingEndpoint, setEditingEndpoint] = useState<CustomEndpoint | null>(null);
+  const [activeEndpointName, setActiveEndpointName] = useState<string | null>(null);
   
   // Settings state  
   const [selectedModel, setSelectedModel] = useState('');
@@ -96,6 +103,10 @@ export default function Account() {
       // Load API keys
       setApiKeys(getAllAPIKeys());
       
+      // Load custom endpoints
+      setCustomEndpoints(getAllCustomEndpoints());
+      setActiveEndpointName(getActiveEndpoint());
+      
       // Load settings
       setSelectedModel(getDefaultChatModel());
       if (typeof window !== 'undefined') {
@@ -134,7 +145,31 @@ export default function Account() {
   };
 
   const handleClearKeys = () => {
-    if (confirm('Are you sure you want to clear all API keys?')) {
+    
+
+  const handleSaveEndpoint = (endpoint: CustomEndpoint) => {
+    saveCustomEndpoint(endpoint);
+    setCustomEndpoints(getAllCustomEndpoints());
+    setShowEndpointModal(false);
+    setEditingEndpoint(null);
+  };
+
+  const handleEditEndpoint = (endpoint: CustomEndpoint) => {
+    setEditingEndpoint(endpoint);
+    setShowEndpointModal(true);
+  };
+
+  const handleDeleteEndpoint = (name: string) => {
+    if (confirm(`Are you sure you want to delete "${name}"?`)) {
+      removeCustomEndpoint(name);
+      setCustomEndpoints(getAllCustomEndpoints());
+    }
+  };
+
+  const handleSetActiveEndpoint = (name: string) => {
+    setActiveEndpoint(name);
+    setActiveEndpointName(name);
+  };if (confirm('Are you sure you want to clear all API keys?')) {
       clearAllKeys();
       setApiKeys({ together: '', openrouter: '', exa: '' });
     }
@@ -592,6 +627,91 @@ export default function Account() {
                   </div>
                 </div>
 
+                {/* Custom Endpoints (BYOEndpoint) */}
+                <div className="custom-endpoints-section">
+                  <div className="section-header">
+                    <h3>🌐 Custom Endpoints (BYOEndpoint)</h3>
+                    <button 
+                      onClick={() => { setEditingEndpoint(null); setShowEndpointModal(true); }}
+                      className="nexus-btn nexus-btn-secondary nexus-btn-sm"
+                    >
+                      + Add Endpoint
+                    </button>
+                  </div>
+                  
+                  <p className="section-description">
+                    Connect to any OpenAI-compatible REST API endpoint. <strong>No guarantees.</strong> If your endpoint doesn't follow OpenAI standards, it won't work. Chat only - no image/video.
+                  </p>
+
+                  {customEndpoints.length === 0 ? (
+                    <div className="empty-state">
+                      <p>🔌 No custom endpoints configured yet.</p>
+                      <p className="empty-hint">Click "Add Endpoint" to connect to any OpenAI-compatible API. You're on your own - compatibility not guaranteed.</p>
+                    </div>
+                  ) : (
+                    <div className="endpoints-grid">
+                      {customEndpoints.map(endpoint => (
+                        <div 
+                          key={endpoint.name} 
+                          className={`endpoint-card ${activeEndpointName === endpoint.name ? 'active' : ''} ${endpoint.enabled === false ? 'disabled' : ''}`}
+                        >
+                          <div className="endpoint-header">
+                            <h4>{endpoint.name}</h4>
+                            <div className="endpoint-actions">
+                              <button
+                                onClick={() => handleSetActiveEndpoint(endpoint.name)}
+                                className="endpoint-action-btn"
+                                title="Set as active"
+                                disabled={endpoint.enabled === false}
+                              >
+                                {activeEndpointName === endpoint.name ? '✓' : '○'}
+                              </button>
+                              <button
+                                onClick={() => handleEditEndpoint(endpoint)}
+                                className="endpoint-action-btn"
+                                title="Edit"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                onClick={() => handleDeleteEndpoint(endpoint.name)}
+                                className="endpoint-action-btn endpoint-delete"
+                                title="Delete"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                          <div className="endpoint-details">
+                            <div className="endpoint-detail">
+                              <span className="detail-label">URL:</span>
+                              <span className="detail-value">{endpoint.chatEndpoint || endpoint.baseUrl || 'Not set'}</span>
+                            </div>
+                            {endpoint.apiKey && (
+                              <div className="endpoint-detail">
+                                <span className="detail-label">API Key:</span>
+                                <span className="detail-value">••••••••</span>
+                              </div>
+                            )}
+                            {endpoint.customPayload && (
+                              <div className="endpoint-detail">
+                                <span className="detail-label">Custom Fields:</span>
+                                <span className="detail-value">Yes</span>
+                              </div>
+                            )}
+                            {endpoint.overridePayload && (
+                              <div className="endpoint-detail">
+                                <span className="detail-label">Mode:</span>
+                                <span className="detail-value badge-advanced">Advanced Template</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="api-keys-actions">
                   <button onClick={handleSaveKeys} className="nexus-btn nexus-btn-primary">
                     💾 Save All Keys
@@ -605,6 +725,16 @@ export default function Account() {
                   <p>🔒 <strong>Security:</strong> Keys are stored locally in your browser's localStorage. They never leave your device except when making API calls directly to the providers.</p>
                 </div>
               </div>
+            )}
+            
+            {/* Custom Endpoint Modal */}
+            {showEndpointModal && (
+              <CustomEndpointModal
+                isOpen={showEndpointModal}
+                onClose={() => { setShowEndpointModal(false); setEditingEndpoint(null); }}
+                onSave={handleSaveEndpoint}
+                editEndpoint={editingEndpoint}
+              />
             )}
 
             {/* Characters Tab */}
@@ -1563,6 +1693,150 @@ export default function Account() {
 
         .launch-btn {
           min-width: 200px;
+        }
+
+        /* Custom Endpoints Section */
+        .custom-endpoints-section {
+          margin-top: var(--spacing-xl);
+          padding-top: var(--spacing-xl);
+          border-top: 1px solid var(--glass-border);
+        }
+
+        .section-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: var(--spacing-md);
+        }
+
+        .section-header h3 {
+          margin: 0;
+          color: var(--accent-color);
+        }
+
+        .section-description {
+          color: var(--secondary-text-color);
+          margin-bottom: var(--spacing-lg);
+        }
+
+        .empty-state {
+          text-align: center;
+          padding: var(--spacing-xl);
+          background: var(--glass-bg-secondary);
+          border-radius: var(--border-radius);
+          border: 1px dashed var(--glass-border);
+        }
+
+        .empty-state p {
+          margin: var(--spacing-sm) 0;
+        }
+
+        .empty-hint {
+          color: var(--secondary-text-color);
+          font-size: 0.875rem;
+        }
+
+        .endpoints-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+          gap: var(--spacing-md);
+        }
+
+        .endpoint-card {
+          background: var(--glass-bg-secondary);
+          border: 1px solid var(--glass-border);
+          border-radius: var(--border-radius);
+          padding: var(--spacing-md);
+          transition: all 0.2s ease;
+        }
+
+        .endpoint-card:hover {
+          border-color: var(--accent-color);
+          box-shadow: var(--glow-primary);
+        }
+
+        .endpoint-card.active {
+          border-color: var(--color-success);
+          background: rgba(0, 255, 136, 0.05);
+        }
+
+        .endpoint-card.disabled {
+          opacity: 0.5;
+        }
+
+        .endpoint-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: var(--spacing-sm);
+        }
+
+        .endpoint-header h4 {
+          margin: 0;
+          color: var(--main-text-color);
+          font-size: 1rem;
+        }
+
+        .endpoint-actions {
+          display: flex;
+          gap: var(--spacing-xs);
+        }
+
+        .endpoint-action-btn {
+          background: transparent;
+          border: 1px solid var(--glass-border);
+          border-radius: 4px;
+          padding: 4px 8px;
+          cursor: pointer;
+          font-size: 0.875rem;
+          transition: all 0.2s ease;
+          color: var(--main-text-color);
+        }
+
+        .endpoint-action-btn:hover {
+          border-color: var(--accent-color);
+          background: var(--glass-bg-primary);
+        }
+
+        .endpoint-action-btn:disabled {
+          opacity: 0.3;
+          cursor: not-allowed;
+        }
+
+        .endpoint-delete:hover {
+          border-color: var(--color-danger);
+          color: var(--color-danger);
+        }
+
+        .endpoint-details {
+          display: flex;
+          flex-direction: column;
+          gap: var(--spacing-xs);
+        }
+
+        .endpoint-detail {
+          display: flex;
+          gap: var(--spacing-sm);
+          font-size: 0.875rem;
+        }
+
+        .detail-label {
+          color: var(--secondary-text-color);
+          min-width: 80px;
+        }
+
+        .detail-value {
+          color: var(--main-text-color);
+          font-family: monospace;
+          word-break: break-all;
+        }
+
+        .badge-advanced {
+          background: linear-gradient(135deg, #f59e0b, #ef4444);
+          padding: 2px 8px;
+          border-radius: 10px;
+          font-size: 0.75rem;
+          color: white;
         }
 
         /* Responsive */

@@ -16,7 +16,7 @@
  * - Local LLM → Ollama/LM Studio (not applicable for cloud)
  */
 
-import { getAPIKey, hasOwnKeys, type APIKeys } from './byok';
+import { getAPIKey, hasOwnKeys, type APIKeys, type CustomEndpoint, getCustomEndpoint, getActiveEndpoint } from './byok';
 import { getDefaultChatModel, getDefaultImageModel, getSelectedModel, CHAT_MODEL_METADATA, IMAGE_MODEL_METADATA } from './models';
 import { calculateMaxTokens, estimateTokens } from './tokenBudget';
 
@@ -222,12 +222,24 @@ function extractAndCleanThought(content: string | null): {
  * SUPPORTED PROVIDERS (matching desktop app):
  * - together: Together.ai - Primary provider for chat, images, video, TTS
  * - openrouter: OpenRouter - Chat routing to 300+ models (50+ free)
+ * - custom: User-defined endpoint (BYOEndpoint)
  * 
  * Note: OpenAI/Anthropic models are accessed THROUGH OpenRouter, not directly.
  * This matches the desktop app's architecture.
  */
-export function detectProvider(modelId: string, explicitProvider?: string): 'together' | 'openrouter' {
+export function detectProvider(modelId: string, explicitProvider?: string): 'together' | 'openrouter' | 'custom' {
   const normalized = (explicitProvider || modelId).toLowerCase();
+  
+  // Check if there's an active custom endpoint
+  const activeEndpoint = getActiveEndpoint();
+  if (activeEndpoint && activeEndpoint !== 'together' && activeEndpoint !== 'openrouter') {
+    return 'custom';
+  }
+  
+  // Check for explicit custom provider marker
+  if (normalized.includes('custom/') || explicitProvider === 'custom') {
+    return 'custom';
+  }
   
   // OpenRouter - explicit or models accessed via router
   if (normalized.includes('openrouter') || 
@@ -489,6 +501,168 @@ async function chatWithOpenAIStyle(
 }
 
 // ============================================================================
+// CUSTOM ENDPOINT API (BYOEndpoint)
+// ============================================================================
+
+/**
+ * Merge custom JSON fields into base payload
+ */
+function mergeCustomPayload(basePayload: Record<string, unknown>, customJSON?: string): Record<string, unknown> {
+  if (!customJSON || !customJSON.trim()) {
+    return basePayload;
+  }
+  
+  try {
+    const customFields = JSON.parse(customJSON);
+    return { ...basePayload, ...customFields };
+  } catch (error) {
+    console.error('[Custom Endpoint] Invalid custom JSON:', error);
+    return basePayload;
+  }
+}
+
+/**
+ * Build payload from template (advanced mode)
+ */
+function buildFromTemplate(
+  template: string,
+  modelId: string,
+  messages: ChatMessage[],
+  temperature: number,
+  maxTokens: number | null
+): Record<string, unknown> {
+  try {
+    // Replace placeholders
+    let built = template
+      .replace(/{{MODEL}}/g, modelId)
+      .replace(/{{MESSAGES}}/g, JSON.stringify(messages))
+      .replace(/{{TEMPERATURE}}/g, temperature.toString())
+      .replace(/{{MAX_TOKENS}}/g, maxTokens !== null ? maxTokens.toString() : 'null');
+    
+    return JSON.parse(built);
+  } catch (error) {
+    console.error('[Custom Endpoint] Invalid payload template:', error);
+    // Fallback to standard
+    return {
+      model: modelId,
+      messages,
+      temperature,
+      ...(maxTokens !== null ? { max_tokens: maxTokens } : {}),
+    };
+  }
+}
+
+/**
+ * Chat with a custom endpoint (BYOEndpoint)
+ * 
+ * ⚠️ ONLY works if endpoint follows OpenAI-compatible REST API standards.
+ * No guarantees. Chat only - NOT for image/video generation.
+ * 
+ * Supports:
+ * - Custom base URLs
+ * - Custom JSON fields (e.g., {"nsfw": true})
+ * - Full payload override with templates
+ */
+async function chatWithCustomEndpoint(
+  endpoint: CustomEndpoint,
+  payload: ChatPayload
+): Promise<ChatResponse> {
+  try {
+    // Calculate max_tokens
+    const inputTokens = estimateTokens(JSON.stringify(payload.messages));
+    const maxTokens = payload.maxTokens ?? calculateMaxTokens(payload.modelConfig.modelId, inputTokens);
+    
+    // Determine the chat endpoint URL
+    const chatUrl = endpoint.chatEndpoint || 
+                    (endpoint.baseUrl ? `${endpoint.baseUrl}/v1/chat/completions` : null);
+    
+    if (!chatUrl) {
+      return { 
+        success: false, 
+        error: 'Custom endpoint requires either chatEndpoint or baseUrl to be configured.' 
+      };
+    }
+    
+    // Build the request body
+    let requestBody: Record<string, unknown>;
+    
+    if (endpoint.overridePayload && endpoint.payloadTemplate) {
+      // Advanced: Use template
+      requestBody = buildFromTemplate(
+        endpoint.payloadTemplate,
+        payload.modelConfig.modelId,
+        payload.messages,
+        payload.temperature ?? 0.7,
+        maxTokens
+      );
+      console.log(`[Custom Endpoint] Using payload template`);
+    } else {
+      // Standard: Build OpenAI-compatible payload with custom fields
+      const basePayload: Record<string, unknown> = {
+        model: payload.modelConfig.modelId,
+        messages: payload.messages,
+        temperature: payload.temperature ?? 0.7,
+      };
+      
+      // Add max_tokens if not unrestricted
+      if (maxTokens !== null) {
+        basePayload.max_tokens = maxTokens;
+      }
+      
+      // Merge custom JSON fields
+      requestBody = mergeCustomPayload(basePayload, endpoint.customPayload);
+    }
+    
+    console.log(`[Custom Endpoint] Sending to: ${chatUrl}`);
+    console.log(`[Custom Endpoint] Model: ${payload.modelConfig.modelId}`);
+    
+    // Build headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Add auth if API key provided
+    if (endpoint.apiKey && endpoint.apiKey.trim()) {
+      headers['Authorization'] = `Bearer ${endpoint.apiKey.trim()}`;
+    }
+    
+    const response = await fetch(chatUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      if (response.status === 429) {
+        return { success: false, error: 'API rate limit exceeded. Please wait a moment.' };
+      }
+      return { 
+        success: false, 
+        error: `Custom endpoint error (${response.status}): ${errorData.error?.message || response.statusText}` 
+      };
+    }
+    
+    const data = await response.json();
+    const choice = data.choices?.[0];
+    const rawContent = choice?.message?.content;
+    
+    const { cleanedAnswer, extractedThinking, emotionalState } = extractAndCleanThought(rawContent);
+    
+    return {
+      success: true,
+      answer: cleanedAnswer,
+      thinking: extractedThinking,
+      emotionalState,
+      usage: data.usage,
+    };
+  } catch (error: any) {
+    console.error('[Custom Endpoint] Request failed:', error);
+    return { success: false, error: `Custom endpoint error: ${error.message}` };
+  }
+}
+
+// ============================================================================
 // MAIN ROUTER (from desktop routeApiCall)
 // ============================================================================
 
@@ -520,6 +694,25 @@ export async function routeChat(payload: ChatPayload): Promise<ChatResponse> {
         return { success: false, error: 'OpenRouter API key not configured. Add it in Settings.' };
       }
       return chatWithOpenRouter(apiKey, payload);
+    }
+    
+    case 'custom': {
+      // Get the active custom endpoint
+      const activeEndpoint = getActiveEndpoint();
+      if (!activeEndpoint || activeEndpoint === 'together' || activeEndpoint === 'openrouter') {
+        return { success: false, error: 'No custom endpoint selected.' };
+      }
+      
+      const endpoint = getCustomEndpoint(activeEndpoint);
+      if (!endpoint) {
+        return { success: false, error: `Custom endpoint "${activeEndpoint}" not found.` };
+      }
+      
+      if (endpoint.enabled === false) {
+        return { success: false, error: `Custom endpoint "${activeEndpoint}" is disabled.` };
+      }
+      
+      return chatWithCustomEndpoint(endpoint, payload);
     }
     
     default: {
