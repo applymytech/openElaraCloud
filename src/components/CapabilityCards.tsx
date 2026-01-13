@@ -1,184 +1,189 @@
 /**
  * Capability Cards - Show users what the AI can do
- * 
+ *
  * Displays available features based on configured API keys and settings.
  * Helps users understand the app's capabilities and how to enable them.
  */
 
-import { useState, useEffect } from 'react';
-import { hasOwnKeys, hasExaKey, hasTogetherKey } from '../lib/byok';
+import { useEffect, useState } from "react";
+import { hasExaKey, hasOwnKeys, hasTogetherKey } from "../lib/byok";
 
 interface CapabilityCard {
-  icon: string;
-  title: string;
-  description: string;
-  enabled: boolean;
-  requiredKey?: string;
-  action: () => void;
-  actionLabel: string;
+	icon: string;
+	title: string;
+	description: string;
+	enabled: boolean;
+	requiredKey?: string;
+	action: () => void;
+	actionLabel: string;
 }
 
 interface CapabilityCardsProps {
-  onClose: () => void;
-  onEnableDeepThought?: () => void;
-  onOpenImageGen?: () => void;
-  onOpenSettings?: () => void;
+	onClose: () => void;
+	onEnableDeepThought?: () => void;
+	onOpenImageGen?: () => void;
+	onOpenSettings?: () => void;
 }
 
 export default function CapabilityCards({
-  onClose,
-  onEnableDeepThought,
-  onOpenImageGen,
-  onOpenSettings,
+	onClose,
+	onEnableDeepThought,
+	onOpenImageGen,
+	onOpenSettings,
 }: CapabilityCardsProps) {
-  const [capabilities, setCapabilities] = useState<CapabilityCard[]>([]);
+	const [capabilities, setCapabilities] = useState<CapabilityCard[]>([]);
 
-  useEffect(() => {
-    const hasChat = hasOwnKeys();
-    const hasWebSearch = hasExaKey();
-    const hasImageGen = hasTogetherKey();
+	useEffect(() => {
+		const hasChat = hasOwnKeys();
+		const hasWebSearch = hasExaKey();
+		const hasImageGen = hasTogetherKey();
 
-    setCapabilities([
-      {
-        icon: '💬',
-        title: 'Chat & Conversation',
-        description: 'Have natural conversations with AI characters. Switch personas for different perspectives.',
-        enabled: hasChat,
-        requiredKey: hasChat ? undefined : 'Together.ai or OpenRouter',
-        action: () => {
-          if (!hasChat) onOpenSettings?.();
-          onClose();
-        },
-        actionLabel: hasChat ? 'Start chatting' : 'Add API key',
-      },
-      {
-        icon: '🧠',
-        title: 'Deep Thought Mode',
-        description: 'Multi-turn reasoning with autonomous tool use. The AI researches, creates images/videos, and synthesizes findings over multiple turns.',
-        enabled: hasChat && hasWebSearch,
-        requiredKey: !hasChat ? 'Together.ai/OpenRouter' : !hasWebSearch ? 'Exa.ai' : undefined,
-        action: () => {
-          if (hasChat && hasWebSearch) {
-            onEnableDeepThought?.();
-          } else {
-            onOpenSettings?.();
-          }
-          onClose();
-        },
-        actionLabel: hasChat && hasWebSearch ? 'Enable Deep Thought' : 'Add required keys',
-      },
-      {
-        icon: '🔍',
-        title: 'Web Research',
-        description: 'Search the live web, read URLs, and gather current information. Goes beyond AI training data.',
-        enabled: hasWebSearch,
-        requiredKey: hasWebSearch ? undefined : 'Exa.ai',
-        action: () => {
-          if (!hasWebSearch) onOpenSettings?.();
-          onClose();
-        },
-        actionLabel: hasWebSearch ? 'Available in chat' : 'Add Exa key',
-      },
-      {
-        icon: '🎨',
-        title: 'Image Generation',
-        description: 'Create images with FLUX models. Generate character selfies or custom scenes.',
-        enabled: hasImageGen,
-        requiredKey: hasImageGen ? undefined : 'Together.ai',
-        action: () => {
-          if (hasImageGen) {
-            onOpenImageGen?.();
-          } else {
-            onOpenSettings?.();
-          }
-          onClose();
-        },
-        actionLabel: hasImageGen ? 'Generate image' : 'Add Together key',
-      },
-      {
-        icon: '🎬',
-        title: 'Video Generation',
-        description: 'Create short videos with AI. Character scenes, animations, and more.',
-        enabled: hasImageGen,
-        requiredKey: hasImageGen ? undefined : 'Together.ai',
-        action: () => {
-          if (!hasImageGen) onOpenSettings?.();
-          onClose();
-        },
-        actionLabel: hasImageGen ? 'Available in chat' : 'Add Together key',
-      },
-      {
-        icon: '📄',
-        title: 'Document Creation',
-        description: 'Generate structured documents, reports, and content. Export in multiple formats.',
-        enabled: hasChat,
-        requiredKey: hasChat ? undefined : 'Together.ai or OpenRouter',
-        action: () => {
-          if (!hasChat) onOpenSettings?.();
-          onClose();
-        },
-        actionLabel: hasChat ? 'Available in chat' : 'Add API key',
-      },
-      {
-        icon: '🏛️',
-        title: 'Council Mode',
-        description: 'Consult all AI personas simultaneously. Get diverse perspectives synthesized into one answer.',
-        enabled: hasChat,
-        requiredKey: hasChat ? undefined : 'Together.ai or OpenRouter',
-        action: () => {
-          if (!hasChat) onOpenSettings?.();
-          onClose();
-        },
-        actionLabel: hasChat ? 'Type [Council Mode]' : 'Add API key',
-      },
-      {
-        icon: '🧠',
-        title: 'Knowledge Base',
-        description: 'Store documents and conversations for the AI to reference. Build persistent memory.',
-        enabled: true,
-        action: () => {
-          onOpenSettings?.();
-          onClose();
-        },
-        actionLabel: 'Manage knowledge',
-      },
-    ]);
-  }, [onClose, onEnableDeepThought, onOpenImageGen, onOpenSettings]);
+		setCapabilities([
+			{
+				icon: "💬",
+				title: "Chat & Conversation",
+				description: "Have natural conversations with AI characters. Switch personas for different perspectives.",
+				enabled: hasChat,
+				requiredKey: hasChat ? undefined : "Together.ai or OpenRouter",
+				action: () => {
+					if (!hasChat) {
+						onOpenSettings?.();
+					}
+					onClose();
+				},
+				actionLabel: hasChat ? "Start chatting" : "Add API key",
+			},
+			{
+				icon: "🧠",
+				title: "Deep Thought Mode",
+				description:
+					"Multi-turn reasoning with autonomous tool use. The AI researches, creates images/videos, and synthesizes findings over multiple turns.",
+				enabled: hasChat && hasWebSearch,
+				requiredKey: !hasChat ? "Together.ai/OpenRouter" : !hasWebSearch ? "Exa.ai" : undefined,
+				action: () => {
+					if (hasChat && hasWebSearch) {
+						onEnableDeepThought?.();
+					} else {
+						onOpenSettings?.();
+					}
+					onClose();
+				},
+				actionLabel: hasChat && hasWebSearch ? "Enable Deep Thought" : "Add required keys",
+			},
+			{
+				icon: "🔍",
+				title: "Web Research",
+				description: "Search the live web, read URLs, and gather current information. Goes beyond AI training data.",
+				enabled: hasWebSearch,
+				requiredKey: hasWebSearch ? undefined : "Exa.ai",
+				action: () => {
+					if (!hasWebSearch) {
+						onOpenSettings?.();
+					}
+					onClose();
+				},
+				actionLabel: hasWebSearch ? "Available in chat" : "Add Exa key",
+			},
+			{
+				icon: "🎨",
+				title: "Image Generation",
+				description: "Create images with FLUX models. Generate character selfies or custom scenes.",
+				enabled: hasImageGen,
+				requiredKey: hasImageGen ? undefined : "Together.ai",
+				action: () => {
+					if (hasImageGen) {
+						onOpenImageGen?.();
+					} else {
+						onOpenSettings?.();
+					}
+					onClose();
+				},
+				actionLabel: hasImageGen ? "Generate image" : "Add Together key",
+			},
+			{
+				icon: "🎬",
+				title: "Video Generation",
+				description: "Create short videos with AI. Character scenes, animations, and more.",
+				enabled: hasImageGen,
+				requiredKey: hasImageGen ? undefined : "Together.ai",
+				action: () => {
+					if (!hasImageGen) {
+						onOpenSettings?.();
+					}
+					onClose();
+				},
+				actionLabel: hasImageGen ? "Available in chat" : "Add Together key",
+			},
+			{
+				icon: "📄",
+				title: "Document Creation",
+				description: "Generate structured documents, reports, and content. Export in multiple formats.",
+				enabled: hasChat,
+				requiredKey: hasChat ? undefined : "Together.ai or OpenRouter",
+				action: () => {
+					if (!hasChat) {
+						onOpenSettings?.();
+					}
+					onClose();
+				},
+				actionLabel: hasChat ? "Available in chat" : "Add API key",
+			},
+			{
+				icon: "🏛️",
+				title: "Council Mode",
+				description: "Consult all AI personas simultaneously. Get diverse perspectives synthesized into one answer.",
+				enabled: hasChat,
+				requiredKey: hasChat ? undefined : "Together.ai or OpenRouter",
+				action: () => {
+					if (!hasChat) {
+						onOpenSettings?.();
+					}
+					onClose();
+				},
+				actionLabel: hasChat ? "Type [Council Mode]" : "Add API key",
+			},
+			{
+				icon: "🧠",
+				title: "Knowledge Base",
+				description: "Store documents and conversations for the AI to reference. Build persistent memory.",
+				enabled: true,
+				action: () => {
+					onOpenSettings?.();
+					onClose();
+				},
+				actionLabel: "Manage knowledge",
+			},
+		]);
+	}, [onClose, onEnableDeepThought, onOpenImageGen, onOpenSettings]);
 
-  return (
-    <div className="capability-cards-modal">
-      <div className="capability-cards-header">
-        <h2>✨ What Can I Help With?</h2>
-        <button className="close-btn" onClick={onClose}>×</button>
-      </div>
+	return (
+		<div className="capability-cards-modal">
+			<div className="capability-cards-header">
+				<h2>✨ What Can I Help With?</h2>
+				<button className="close-btn" onClick={onClose}>
+					×
+				</button>
+			</div>
 
-      <div className="capability-cards-grid">
-        {capabilities.map((card, idx) => (
-          <div
-            key={idx}
-            className={`capability-card ${card.enabled ? 'enabled' : 'disabled'}`}
-          >
-            <div className="card-icon">{card.icon}</div>
-            <h3 className="card-title">{card.title}</h3>
-            <p className="card-description">{card.description}</p>
+			<div className="capability-cards-grid">
+				{capabilities.map((card, idx) => (
+					<div key={idx} className={`capability-card ${card.enabled ? "enabled" : "disabled"}`}>
+						<div className="card-icon">{card.icon}</div>
+						<h3 className="card-title">{card.title}</h3>
+						<p className="card-description">{card.description}</p>
 
-            {!card.enabled && card.requiredKey && (
-              <div className="card-requirement">
-                🔑 Requires: {card.requiredKey}
-              </div>
-            )}
+						{!card.enabled && card.requiredKey && (
+							<div className="card-requirement">🔑 Requires: {card.requiredKey}</div>
+						)}
 
-            <button
-              className={`card-action-btn ${card.enabled ? 'enabled' : 'disabled'}`}
-              onClick={card.action}
-            >
-              {card.actionLabel}
-            </button>
-          </div>
-        ))}
-      </div>
+						<button className={`card-action-btn ${card.enabled ? "enabled" : "disabled"}`} onClick={card.action}>
+							{card.actionLabel}
+						</button>
+					</div>
+				))}
+			</div>
 
-      <style jsx>{`
+			<style jsx>{`
         .capability-cards-modal {
           position: fixed;
           top: 50%;
@@ -332,6 +337,6 @@ export default function CapabilityCards({
           }
         }
       `}</style>
-    </div>
-  );
+		</div>
+	);
 }

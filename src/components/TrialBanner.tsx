@@ -2,74 +2,76 @@
  * Trial Warning Banner - Shows daily reminders about trial expiration
  */
 
-import { useEffect, useState } from 'react';
-import { auth } from '@/lib/firebase';
-import { getTrialStatus, getTrialWarningMessage, type TrialStatus } from '@/lib/trial';
-import { useRouter } from 'next/router';
+import { useRouter } from "next/router";
+import { useEffect, useState } from "react";
+import { auth } from "@/lib/firebase";
+import { getTrialStatus, getTrialWarningMessage, type TrialStatus } from "@/lib/trial";
 
 export default function TrialBanner() {
-  const [trialStatus, setTrialStatus] = useState<TrialStatus | null>(null);
-  const [dismissed, setDismissed] = useState(false);
-  const router = useRouter();
+	const [trialStatus, setTrialStatus] = useState<TrialStatus | null>(null);
+	const [dismissed, setDismissed] = useState(false);
+	const _router = useRouter();
 
-  useEffect(() => {
-    const checkTrial = async () => {
-      if (!auth.currentUser) return;
-      const status = await getTrialStatus();
-      setTrialStatus(status);
-    };
+	useEffect(() => {
+		const checkTrial = async () => {
+			if (!auth.currentUser) {
+				return;
+			}
+			const status = await getTrialStatus();
+			setTrialStatus(status);
+		};
 
-    checkTrial();
-    const interval = setInterval(checkTrial, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, []);
+		checkTrial();
+		const interval = setInterval(checkTrial, 60000); // Check every minute
+		return () => clearInterval(interval);
+	}, []);
 
-  if (!trialStatus || trialStatus.warningLevel === 'none' || dismissed) {
-    return null;
-  }
+	if (!trialStatus || trialStatus.warningLevel === "none" || dismissed) {
+		return null;
+	}
 
-  const handleDeploy = () => {
-    window.open('https://github.com/applymytech/openElaraCloud', '_blank');
-  };
+	const handleDeploy = () => {
+		window.open("https://github.com/applymytech/openElaraCloud", "_blank");
+	};
 
-  const getBannerStyle = () => {
-    switch (trialStatus.warningLevel) {
-      case 'expired':
-        return 'trial-banner-expired';
-      case 'urgent':
-        return 'trial-banner-urgent';
-      case 'warning':
-        return 'trial-banner-warning';
-      default:
-        return 'trial-banner-info';
-    }
-  };
+	const getBannerStyle = () => {
+		switch (trialStatus.warningLevel) {
+			case "expired":
+				return "trial-banner-expired";
+			case "urgent":
+				return "trial-banner-urgent";
+			case "warning":
+				return "trial-banner-warning";
+			default:
+				return "trial-banner-info";
+		}
+	};
 
-  return (
-    <div className={`trial-banner ${getBannerStyle()}`}>
-      <div className="trial-banner-content">
-        <div className="trial-banner-icon">
-          {trialStatus.isExpired ? '🚫' : '⏰'}
-        </div>
-        <div className="trial-banner-text">
-          <strong>
-            {trialStatus.isExpired ? 'Trial Expired' : `${trialStatus.daysRemaining} Day${trialStatus.daysRemaining === 1 ? '' : 's'} Remaining`}
-          </strong>
-          <span>{getTrialWarningMessage(trialStatus)}</span>
-        </div>
-        <div className="trial-banner-actions">
-          <button onClick={handleDeploy} className="trial-banner-btn trial-banner-btn-primary">
-            🚀 Deploy Your Own
-          </button>
-          {!trialStatus.isExpired && (
-            <button onClick={() => setDismissed(true)} className="trial-banner-btn trial-banner-btn-ghost">
-              Dismiss
-            </button>
-          )}
-        </div>
-      </div>
+	return (
+		<div className={`trial-banner ${getBannerStyle()}`}>
+			<div className="trial-banner-content">
+				<div className="trial-banner-icon">{trialStatus.isExpired ? "🚫" : "⏰"}</div>
+				<div className="trial-banner-text">
+					<strong>
+						{trialStatus.isExpired
+							? "Trial Expired"
+							: `${trialStatus.daysRemaining} Day${trialStatus.daysRemaining === 1 ? "" : "s"} Remaining`}
+					</strong>
+					<span>{getTrialWarningMessage(trialStatus)}</span>
+				</div>
+				<div className="trial-banner-actions">
+					<button onClick={handleDeploy} className="trial-banner-btn trial-banner-btn-primary">
+						🚀 Deploy Your Own
+					</button>
+					{!trialStatus.isExpired && (
+						<button onClick={() => setDismissed(true)} className="trial-banner-btn trial-banner-btn-ghost">
+							Dismiss
+						</button>
+					)}
+				</div>
+			</div>
 
-      <style jsx>{`
+			<style jsx>{`
         .trial-banner {
           position: fixed;
           top: 0;
@@ -191,6 +193,6 @@ export default function TrialBanner() {
           }
         }
       `}</style>
-    </div>
-  );
+		</div>
+	);
 }

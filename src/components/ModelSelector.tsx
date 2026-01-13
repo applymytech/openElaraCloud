@@ -1,58 +1,121 @@
 /**
  * ModelSelector Component - Enhanced Model Selection Modal
- * 
+ *
+ * ████████████████████████████████████████████████████████████████████████████
+ * █                                                                          █
+ * █   🚫 NO HARDCODED MODELS - All models discovered via /models API 🚫      █
+ * █   Models are verified by ping test on app load.                          █
+ * █   Response times shown for speed comparison.                             █
+ * █                                                                          █
+ * ████████████████████████████████████████████████████████████████████████████
+ *
  * Features:
  * - Provider detection from available API keys
  * - Tabbed interface for each provider
- * - Free models at top, then grouped by publisher
+ * - Free models at top (verified working), then grouped by publisher
+ * - Response time indicators for speed comparison
  * - Star/favorite system with localStorage persistence
- * - Custom REST API support
+ * - Custom REST API support (OpenAI-compatible)
  */
 
-import { useState, useEffect, useMemo } from 'react';
-import { getAllAPIKeysSync } from '@/lib/byok';
-import { CHAT_MODEL_METADATA, type ChatModelMetadata, type Model } from '@/lib/models';
+import { useEffect, useMemo, useState } from "react";
+import { getAllAPIKeysSync } from "@/lib/byok";
+import { useModelVerification } from "@/lib/useModelVerification";
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 interface ModelSelectorProps {
-  currentModel: string;
-  availableModels: Model[];
-  onSelect: (modelId: string) => void;
-  onClose: () => void;
+	currentModel: string;
+	onSelect: (modelId: string) => void;
+	onClose: () => void;
 }
 
-interface GroupedModel extends Model {
-  publisher: string;
-  isFavorite: boolean;
-  isFree: boolean;
+interface GroupedModel {
+	id: string;
+	displayName: string;
+	publisher: string;
+	isFavorite: boolean;
+	isFree: boolean;
+	isVerified: boolean;
+	responseTimeMs: number | null;
+	contextLength: number;
+	pricing: { input: number; output: number };
+	error?: string;
 }
 
-type Provider = 'together' | 'openrouter' | 'custom';
+type Provider = "together" | "openrouter" | "custom";
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function formatResponseTime(ms: number | null): string {
+	if (ms === null) {
+		return "";
+	}
+	if (ms < 1000) {
+		return `${ms}ms`;
+	}
+	return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function formatPrice(price: number): string {
+	if (price === 0) {
+		return "FREE";
+	}
+	if (price < 0) {
+		return ""; // Unknown
+	}
+	// Price is per 1M tokens
+	if (price < 0.01) {
+		return `$${(price * 1000).toFixed(3)}/K`;
+	}
+	return `$${price.toFixed(2)}/M`;
+}
+
+function getSpeedBadge(ms: number | null): { label: string; class: string } | null {
+	if (ms === null) {
+		return null;
+	}
+	if (ms < 500) {
+		return { label: "⚡ FAST", class: "speed-fast" };
+	}
+	if (ms < 1500) {
+		return { label: "🏃 QUICK", class: "speed-quick" };
+	}
+	if (ms < 3000) {
+		return { label: "🐢 SLOW", class: "speed-slow" };
+	}
+	return { label: "🦥 VERY SLOW", class: "speed-very-slow" };
+}
 
 // ============================================================================
 // FAVORITES MANAGEMENT
 // ============================================================================
 
-const FAVORITES_KEY = 'elara_favorite_models';
+const FAVORITES_KEY = "elara_favorite_models";
 
 function getFavorites(): Set<string> {
-  if (typeof window === 'undefined') return new Set();
-  const stored = localStorage.getItem(FAVORITES_KEY);
-  return stored ? new Set(JSON.parse(stored)) : new Set();
+	if (typeof window === "undefined") {
+		return new Set();
+	}
+	const stored = localStorage.getItem(FAVORITES_KEY);
+	return stored ? new Set(JSON.parse(stored)) : new Set();
 }
 
 function toggleFavorite(modelId: string): void {
-  if (typeof window === 'undefined') return;
-  const favorites = getFavorites();
-  if (favorites.has(modelId)) {
-    favorites.delete(modelId);
-  } else {
-    favorites.add(modelId);
-  }
-  localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(favorites)));
+	if (typeof window === "undefined") {
+		return;
+	}
+	const favorites = getFavorites();
+	if (favorites.has(modelId)) {
+		favorites.delete(modelId);
+	} else {
+		favorites.add(modelId);
+	}
+	localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(favorites)));
 }
 
 // ============================================================================
@@ -60,289 +123,299 @@ function toggleFavorite(modelId: string): void {
 // ============================================================================
 
 function detectAvailableProviders(): Provider[] {
-  const keys = getAllAPIKeysSync();
-  const providers: Provider[] = [];
-  
-  if (keys.together) providers.push('together');
-  if (keys.openrouter) providers.push('openrouter');
-  
-  // Check for custom REST API keys (stored with custom_ prefix)
-  if (typeof window !== 'undefined') {
-    const customKeys = Object.keys(localStorage).filter(k => k.startsWith('elara_apikey_custom_'));
-    if (customKeys.length > 0) providers.push('custom');
-  }
-  
-  return providers;
+	const keys = getAllAPIKeysSync();
+	const providers: Provider[] = [];
+
+	if (keys.together) {
+		providers.push("together");
+	}
+	if (keys.openrouter) {
+		providers.push("openrouter");
+	}
+
+	// Check for custom REST API keys (stored with custom_ prefix)
+	if (typeof window !== "undefined") {
+		const customKeys = Object.keys(localStorage).filter((k) => k.startsWith("elara_apikey_custom_"));
+		if (customKeys.length > 0) {
+			providers.push("custom");
+		}
+	}
+
+	return providers;
 }
 
 function getProviderName(provider: Provider): string {
-  switch (provider) {
-    case 'together': return '🚀 Together.ai';
-    case 'openrouter': return '🌐 OpenRouter';
-    case 'custom': return '⚙️ Custom API';
-    default: return provider;
-  }
-}
-
-function detectModelProvider(modelId: string): Provider {
-  // Check metadata first
-  const meta = CHAT_MODEL_METADATA[modelId];
-  
-  // Together.ai models (meta-llama, mistralai, deepseek, qwen, etc.)
-  if (modelId.includes('meta-llama') || 
-      modelId.includes('mistralai') || 
-      modelId.includes('deepseek') ||
-      modelId.includes('Qwen') ||
-      modelId.includes('ServiceNow') ||
-      modelId.includes('google') ||
-      modelId.includes('NousResearch') ||
-      modelId.includes('Liquid') ||
-      modelId.includes('databricks')) {
-    return 'together';
-  }
-  
-  // OpenRouter models (anthropic, openai, google, etc.)
-  if (modelId.includes('anthropic') || 
-      modelId.includes('openai') || 
-      modelId.startsWith('gpt-')) {
-    return 'openrouter';
-  }
-  
-  // Custom models
-  if (modelId.startsWith('custom/')) {
-    return 'custom';
-  }
-  
-  // Default: check what keys are available
-  const providers = detectAvailableProviders();
-  return providers[0] || 'together';
-}
-
-// ============================================================================
-// MODEL GROUPING & SORTING
-// ============================================================================
-
-function extractPublisher(modelId: string): string {
-  // Extract publisher from model ID (format: publisher/model-name)
-  const parts = modelId.split('/');
-  if (parts.length > 1) {
-    const publisher = parts[0];
-    // Clean up publisher names
-    if (publisher === 'meta-llama') return 'Meta';
-    if (publisher === 'mistralai') return 'Mistral AI';
-    if (publisher === 'deepseek-ai') return 'DeepSeek';
-    if (publisher === 'ServiceNow-AI') return 'ServiceNow';
-    if (publisher === 'NousResearch') return 'Nous Research';
-    return publisher.split('-')[0]; // Take first part for compound names
-  }
-  return 'Other';
-}
-
-function groupAndSortModels(models: Model[], favorites: Set<string>): GroupedModel[] {
-  return models.map(model => {
-    const meta = model.metadata as ChatModelMetadata;
-    return {
-      ...model,
-      publisher: extractPublisher(model.id),
-      isFavorite: favorites.has(model.id),
-      isFree: meta?.free || false,
-    };
-  }).sort((a, b) => {
-    // 1. Favorites first
-    if (a.isFavorite && !b.isFavorite) return -1;
-    if (!a.isFavorite && b.isFavorite) return 1;
-    
-    // 2. Free models next
-    if (a.isFree && !b.isFree) return -1;
-    if (!a.isFree && b.isFree) return 1;
-    
-    // 3. Then by publisher (alphabetical)
-    const pubCompare = a.publisher.localeCompare(b.publisher);
-    if (pubCompare !== 0) return pubCompare;
-    
-    // 4. Finally by name within publisher
-    return (a.metadata?.displayName || a.id).localeCompare(b.metadata?.displayName || b.id);
-  });
+	switch (provider) {
+		case "together":
+			return "🚀 Together.ai";
+		case "openrouter":
+			return "🌐 OpenRouter";
+		case "custom":
+			return "⚙️ Custom API";
+		default:
+			return provider;
+	}
 }
 
 // ============================================================================
 // COMPONENT
 // ============================================================================
 
-export default function ModelSelector({ currentModel, availableModels, onSelect, onClose }: ModelSelectorProps) {
-  const [activeTab, setActiveTab] = useState<Provider>('together');
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  const availableProviders = useMemo(() => detectAvailableProviders(), []);
-  
-  useEffect(() => {
-    setFavorites(getFavorites());
-    // Set initial tab to first available provider
-    if (availableProviders.length > 0 && !availableProviders.includes(activeTab)) {
-      setActiveTab(availableProviders[0]);
-    }
-  }, [availableProviders]);
-  
-  const handleToggleFavorite = (modelId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    toggleFavorite(modelId);
-    setFavorites(getFavorites());
-  };
-  
-  // Filter models by provider and search
-  const filteredModels = useMemo(() => {
-    let models = availableModels.filter(m => detectModelProvider(m.id) === activeTab);
-    
-    // Add fallback models from metadata if API fetch failed
-    if (models.length === 0) {
-      models = Object.entries(CHAT_MODEL_METADATA)
-        .filter(([id]) => detectModelProvider(id) === activeTab)
-        .map(([id, meta]) => ({
-          id,
-          type: 'chat' as const,
-          displayName: meta.displayName,
-          metadata: meta,
-          fallback: true,
-        }));
-    }
-    
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      models = models.filter(m => 
-        m.id.toLowerCase().includes(query) ||
-        (m.metadata?.displayName || '').toLowerCase().includes(query) ||
-        (m.metadata?.description || '').toLowerCase().includes(query) ||
-        extractPublisher(m.id).toLowerCase().includes(query)
-      );
-    }
-    
-    return groupAndSortModels(models, favorites);
-  }, [activeTab, availableModels, searchQuery, favorites]);
-  
-  // Group by publisher for section headers
-  const modelsByPublisher = useMemo(() => {
-    const grouped = new Map<string, GroupedModel[]>();
-    
-    // Favorites section
-    const favs = filteredModels.filter(m => m.isFavorite);
-    if (favs.length > 0) {
-      grouped.set('⭐ Favorites', favs);
-    }
-    
-    // Free section
-    const free = filteredModels.filter(m => m.isFree && !m.isFavorite);
-    if (free.length > 0) {
-      grouped.set('🆓 Free Models', free);
-    }
-    
-    // Group by publisher
-    const remaining = filteredModels.filter(m => !m.isFavorite && !m.isFree);
-    remaining.forEach(model => {
-      const pub = model.publisher;
-      if (!grouped.has(pub)) {
-        grouped.set(pub, []);
-      }
-      grouped.get(pub)!.push(model);
-    });
-    
-    return grouped;
-  }, [filteredModels]);
-  
-  return (
-    <div className="model-selector-modal" onClick={(e) => e.stopPropagation()}>
-      <div className="modal-header">
-        <h2>🤖 Select Chat Model</h2>
-        <button className="modal-close-btn" onClick={onClose}>×</button>
-      </div>
-      
-      {/* Provider Tabs */}
-      <div className="provider-tabs">
-        {availableProviders.map(provider => (
-          <button
-            key={provider}
-            className={`provider-tab ${activeTab === provider ? 'active' : ''}`}
-            onClick={() => setActiveTab(provider)}
-          >
-            {getProviderName(provider)}
-          </button>
-        ))}
-      </div>
-      
-      {/* Search Bar */}
-      <div className="model-search">
-        <input
-          type="text"
-          placeholder="Search models by name, publisher, or description..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="search-input"
-        />
-      </div>
-      
-      {/* Models Grid */}
-      <div className="modal-body">
-        {modelsByPublisher.size === 0 ? (
-          <div className="no-models">
-            <p>No models found for {getProviderName(activeTab)}</p>
-            {!availableProviders.includes(activeTab) && (
-              <p className="hint">Configure your API key in Settings to see available models</p>
-            )}
-          </div>
-        ) : (
-          Array.from(modelsByPublisher.entries()).map(([publisher, models]) => (
-            <div key={publisher} className="publisher-group">
-              <h3 className="publisher-header">{publisher}</h3>
-              <div className="model-selector-grid">
-                {models.map(model => {
-                  const meta = model.metadata as ChatModelMetadata;
-                  return (
-                    <button
-                      key={model.id}
-                      className={`model-card ${model.id === currentModel ? 'active' : ''} ${model.isFavorite ? 'favorited' : ''}`}
-                      onClick={() => onSelect(model.id)}
-                    >
-                      <div className="model-card-header">
-                        <span className="model-card-name">
-                          {meta?.displayName || model.displayName || model.id.split('/').pop()}
-                        </span>
-                        <button 
-                          className={`favorite-btn ${model.isFavorite ? 'active' : ''}`}
-                          onClick={(e) => handleToggleFavorite(model.id, e)}
-                          title={model.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                        >
-                          {model.isFavorite ? '⭐' : '☆'}
-                        </button>
-                      </div>
-                      
-                      <div className="model-card-badges">
-                        {model.id === currentModel && <span className="model-badge current">✓ ACTIVE</span>}
-                        {model.isFree && <span className="model-badge free">FREE</span>}
-                        {meta?.recommended && <span className="model-badge rec">RECOMMENDED</span>}
-                        {meta?.thinking && <span className="model-badge thinking">THINKING</span>}
-                        {meta?.supportsTools && <span className="model-badge tools">TOOLS</span>}
-                      </div>
-                      
-                      {meta?.description && (
-                        <div className="model-card-description">{meta.description}</div>
-                      )}
-                      
-                      {meta?.contextLength && (
-                        <div className="model-card-meta">
-                          Context: {meta.contextLength.toLocaleString()} tokens
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-      
-      <style jsx>{`
+export default function ModelSelector({ currentModel, onSelect, onClose }: ModelSelectorProps) {
+	const [activeTab, setActiveTab] = useState<Provider>("together");
+	const [favorites, setFavorites] = useState<Set<string>>(new Set());
+	const [searchQuery, setSearchQuery] = useState("");
+
+	// Get verified models from the verification service
+	const together = useModelVerification("together", { autoRefresh: false });
+	const openrouter = useModelVerification("openrouter", { autoRefresh: false });
+
+	const availableProviders = useMemo(() => detectAvailableProviders(), []);
+
+	useEffect(() => {
+		setFavorites(getFavorites());
+		// Set initial tab to first available provider
+		if (availableProviders.length > 0 && !availableProviders.includes(activeTab)) {
+			setActiveTab(availableProviders[0]);
+		}
+	}, [availableProviders, activeTab]);
+
+	const handleToggleFavorite = (modelId: string, e: React.MouseEvent) => {
+		e.stopPropagation();
+		toggleFavorite(modelId);
+		setFavorites(getFavorites());
+	};
+
+	// Get verification data for current tab
+	const currentVerification = activeTab === "together" ? together : openrouter;
+
+	// Merge verified models with any legacy models
+	const filteredModels = useMemo(() => {
+		const verifiedModels = currentVerification.models;
+
+		// Convert verified models to GroupedModel format
+		const models: GroupedModel[] = verifiedModels
+			.filter((m) => m.isVerified && !m.error) // Only show working models
+			.map((m) => ({
+				id: m.id,
+				displayName: m.displayName,
+				publisher: m.publisher,
+				isFavorite: favorites.has(m.id),
+				isFree: m.isFree,
+				isVerified: m.isVerified,
+				responseTimeMs: m.responseTimeMs,
+				contextLength: m.contextLength,
+				pricing: m.pricing,
+			}));
+
+		// Apply search filter
+		if (searchQuery.trim()) {
+			const query = searchQuery.toLowerCase();
+			return models.filter(
+				(m) =>
+					m.id.toLowerCase().includes(query) ||
+					m.displayName.toLowerCase().includes(query) ||
+					m.publisher.toLowerCase().includes(query),
+			);
+		}
+
+		return models;
+	}, [currentVerification.models, favorites, searchQuery]);
+
+	// Sort models: favorites → free (by speed) → paid (by publisher)
+	const sortedModels = useMemo(() => {
+		return [...filteredModels].sort((a, b) => {
+			// 1. Favorites first
+			if (a.isFavorite && !b.isFavorite) {
+				return -1;
+			}
+			if (!a.isFavorite && b.isFavorite) {
+				return 1;
+			}
+
+			// 2. Free models next, sorted by response time
+			if (a.isFree && !b.isFree) {
+				return -1;
+			}
+			if (!a.isFree && b.isFree) {
+				return 1;
+			}
+
+			// 3. Within same tier, sort by response time (faster first)
+			if (a.responseTimeMs !== null && b.responseTimeMs !== null) {
+				return a.responseTimeMs - b.responseTimeMs;
+			}
+
+			// 4. Then by publisher
+			const pubCompare = a.publisher.localeCompare(b.publisher);
+			if (pubCompare !== 0) {
+				return pubCompare;
+			}
+
+			// 5. Finally by name
+			return a.displayName.localeCompare(b.displayName);
+		});
+	}, [filteredModels]);
+
+	// Group by publisher for section headers
+	const modelsByPublisher = useMemo(() => {
+		const grouped = new Map<string, GroupedModel[]>();
+
+		// Favorites section
+		const favs = sortedModels.filter((m) => m.isFavorite);
+		if (favs.length > 0) {
+			grouped.set("⭐ Favorites", favs);
+		}
+
+		// Free section (verified working)
+		const free = sortedModels.filter((m) => m.isFree && !m.isFavorite);
+		if (free.length > 0) {
+			grouped.set("🆓 Free Models (Verified)", free);
+		}
+
+		// Group remaining by publisher
+		const remaining = sortedModels.filter((m) => !m.isFavorite && !m.isFree);
+		remaining.forEach((model) => {
+			const pub = `💰 ${model.publisher}`;
+			if (!grouped.has(pub)) {
+				grouped.set(pub, []);
+			}
+			grouped.get(pub)?.push(model);
+		});
+
+		return grouped;
+	}, [sortedModels]);
+
+	return (
+		<div className="model-selector-modal" onClick={(e) => e.stopPropagation()}>
+			<div className="modal-header">
+				<h2>🤖 Select Chat Model</h2>
+				<button className="modal-close-btn" onClick={onClose}>
+					×
+				</button>
+			</div>
+
+			{/* Provider Tabs */}
+			<div className="provider-tabs">
+				{availableProviders.map((provider) => (
+					<button
+						key={provider}
+						className={`provider-tab ${activeTab === provider ? "active" : ""}`}
+						onClick={() => setActiveTab(provider)}
+					>
+						{getProviderName(provider)}
+						{provider === "together" && together.isLoading && <span className="loading-dot">●</span>}
+						{provider === "openrouter" && openrouter.isLoading && <span className="loading-dot">●</span>}
+					</button>
+				))}
+			</div>
+
+			{/* Search Bar */}
+			<div className="model-search">
+				<input
+					type="text"
+					placeholder="Search models by name, publisher..."
+					value={searchQuery}
+					onChange={(e) => setSearchQuery(e.target.value)}
+					className="search-input"
+				/>
+				{currentVerification.isRefreshing && <span className="refresh-indicator">🔄 Refreshing...</span>}
+			</div>
+
+			{/* Loading State */}
+			{currentVerification.isLoading && (
+				<div className="loading-state">
+					<div className="loading-spinner" />
+					<p>Verifying models...</p>
+					{currentVerification.progress && (
+						<p className="progress-text">
+							Testing {currentVerification.progress.current}/{currentVerification.progress.total}
+							<br />
+							<small>{currentVerification.progress.modelId}</small>
+						</p>
+					)}
+				</div>
+			)}
+
+			{/* Models Grid */}
+			{!currentVerification.isLoading && (
+				<div className="modal-body">
+					{modelsByPublisher.size === 0 ? (
+						<div className="no-models">
+							{currentVerification.error ? (
+								<>
+									<p>⚠️ {currentVerification.error}</p>
+									<button className="retry-btn" onClick={() => currentVerification.refresh()}>
+										Retry Verification
+									</button>
+								</>
+							) : !availableProviders.includes(activeTab) ? (
+								<>
+									<p>No models found for {getProviderName(activeTab)}</p>
+									<p className="hint">Configure your API key in Settings to see available models</p>
+								</>
+							) : (
+								<>
+									<p>No models match your search</p>
+									<p className="hint">Try a different search term</p>
+								</>
+							)}
+						</div>
+					) : (
+						Array.from(modelsByPublisher.entries()).map(([publisher, models]) => (
+							<div key={publisher} className="publisher-group">
+								<h3 className="publisher-header">
+									{publisher}
+									<span className="model-count">({models.length})</span>
+								</h3>
+								<div className="model-selector-grid">
+									{models.map((model) => {
+										const speedBadge = getSpeedBadge(model.responseTimeMs);
+										return (
+											<button
+												key={model.id}
+												className={`model-card ${model.id === currentModel ? "active" : ""} ${model.isFavorite ? "favorited" : ""}`}
+												onClick={() => onSelect(model.id)}
+											>
+												<div className="model-card-header">
+													<span className="model-card-name">{model.displayName}</span>
+													<button
+														className={`favorite-btn ${model.isFavorite ? "active" : ""}`}
+														onClick={(e) => handleToggleFavorite(model.id, e)}
+														title={model.isFavorite ? "Remove from favorites" : "Add to favorites"}
+													>
+														{model.isFavorite ? "⭐" : "☆"}
+													</button>
+												</div>
+
+												<div className="model-card-badges">
+													{model.id === currentModel && <span className="model-badge current">✓ ACTIVE</span>}
+													{model.isFree && <span className="model-badge free">FREE</span>}
+													{!model.isFree && model.pricing.input > 0 && (
+														<span className="model-badge paid">{formatPrice(model.pricing.input)}</span>
+													)}
+													{speedBadge && <span className={`model-badge ${speedBadge.class}`}>{speedBadge.label}</span>}
+												</div>
+
+												<div className="model-card-meta">
+													{model.contextLength > 0 && <span>📏 {(model.contextLength / 1000).toFixed(0)}K ctx</span>}
+													{model.responseTimeMs !== null && (
+														<span className="response-time">⏱️ {formatResponseTime(model.responseTimeMs)}</span>
+													)}
+												</div>
+
+												<div className="model-id-hint">{model.id}</div>
+											</button>
+										);
+									})}
+								</div>
+							</div>
+						))
+					)}
+				</div>
+			)}
+
+			<style jsx>{`
         .model-selector-modal {
           background: var(--secondary-bg-color);
           border-radius: 12px;
@@ -415,6 +488,9 @@ export default function ModelSelector({ currentModel, availableModels, onSelect,
           cursor: pointer;
           transition: all 0.2s ease;
           position: relative;
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
         
         .provider-tab:hover {
@@ -427,16 +503,29 @@ export default function ModelSelector({ currentModel, availableModels, onSelect,
           border-bottom-color: var(--accent-color);
         }
         
+        .loading-dot {
+          color: #22c55e;
+          animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+        
         /* Search Bar */
         .model-search {
           padding: 16px 24px;
           background: var(--secondary-bg-color);
           border-bottom: 1px solid var(--glass-border);
           flex-shrink: 0;
+          display: flex;
+          gap: 12px;
+          align-items: center;
         }
         
         .search-input {
-          width: 100%;
+          flex: 1;
           padding: 10px 16px;
           background: var(--main-bg-color);
           border: 1px solid var(--glass-border);
@@ -454,6 +543,45 @@ export default function ModelSelector({ currentModel, availableModels, onSelect,
         
         .search-input::placeholder {
           color: var(--secondary-text-color);
+        }
+        
+        .refresh-indicator {
+          font-size: 12px;
+          color: var(--accent-color);
+          animation: pulse 1s infinite;
+        }
+        
+        /* Loading State */
+        .loading-state {
+          padding: 60px 24px;
+          text-align: center;
+          color: var(--secondary-text-color);
+        }
+        
+        .loading-spinner {
+          width: 40px;
+          height: 40px;
+          border: 3px solid var(--glass-border);
+          border-top-color: var(--accent-color);
+          border-radius: 50%;
+          margin: 0 auto 16px;
+          animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        
+        .progress-text {
+          font-size: 13px;
+          color: var(--tertiary-text-color);
+        }
+        
+        .progress-text small {
+          display: block;
+          margin-top: 4px;
+          font-family: monospace;
+          opacity: 0.7;
         }
         
         /* Modal Body */
@@ -478,6 +606,21 @@ export default function ModelSelector({ currentModel, availableModels, onSelect,
           color: var(--tertiary-text-color);
         }
         
+        .retry-btn {
+          margin-top: 16px;
+          padding: 8px 16px;
+          background: var(--accent-color);
+          border: none;
+          border-radius: 6px;
+          color: white;
+          cursor: pointer;
+          font-weight: 600;
+        }
+        
+        .retry-btn:hover {
+          opacity: 0.9;
+        }
+        
         /* Publisher Groups */
         .publisher-group {
           margin-bottom: 32px;
@@ -498,6 +641,15 @@ export default function ModelSelector({ currentModel, availableModels, onSelect,
           background: var(--glass-bg);
           border-radius: 6px;
           border-left: 3px solid var(--accent-color);
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        .model-count {
+          font-size: 12px;
+          font-weight: normal;
+          opacity: 0.7;
         }
         
         /* Model Grid */
@@ -601,34 +753,56 @@ export default function ModelSelector({ currentModel, availableModels, onSelect,
           border: 1px solid rgba(34, 197, 94, 0.25);
         }
         
-        .model-badge.rec {
-          background: rgba(139, 92, 246, 0.15);
-          color: #a78bfa;
-          border: 1px solid rgba(139, 92, 246, 0.25);
-        }
-        
-        .model-badge.thinking {
-          background: rgba(59, 130, 246, 0.15);
-          color: #60a5fa;
-          border: 1px solid rgba(59, 130, 246, 0.25);
-        }
-        
-        .model-badge.tools {
+        .model-badge.paid {
           background: rgba(249, 115, 22, 0.15);
           color: #fb923c;
           border: 1px solid rgba(249, 115, 22, 0.25);
         }
         
-        .model-card-description {
-          font-size: 12px;
-          color: var(--secondary-text-color);
-          line-height: 1.4;
+        .model-badge.speed-fast {
+          background: rgba(34, 197, 94, 0.15);
+          color: #4ade80;
+          border: 1px solid rgba(34, 197, 94, 0.25);
+        }
+        
+        .model-badge.speed-quick {
+          background: rgba(59, 130, 246, 0.15);
+          color: #60a5fa;
+          border: 1px solid rgba(59, 130, 246, 0.25);
+        }
+        
+        .model-badge.speed-slow {
+          background: rgba(249, 115, 22, 0.15);
+          color: #fb923c;
+          border: 1px solid rgba(249, 115, 22, 0.25);
+        }
+        
+        .model-badge.speed-very-slow {
+          background: rgba(239, 68, 68, 0.15);
+          color: #f87171;
+          border: 1px solid rgba(239, 68, 68, 0.25);
         }
         
         .model-card-meta {
           font-size: 11px;
           color: var(--tertiary-text-color);
-          margin-top: 4px;
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        
+        .response-time {
+          color: var(--accent-color);
+        }
+        
+        .model-id-hint {
+          font-size: 10px;
+          color: var(--tertiary-text-color);
+          font-family: monospace;
+          opacity: 0.6;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         
         /* Mobile Responsive */
@@ -653,6 +827,6 @@ export default function ModelSelector({ currentModel, availableModels, onSelect,
           }
         }
       `}</style>
-    </div>
-  );
+		</div>
+	);
 }

@@ -1,214 +1,210 @@
 /**
  * Storage Management Component
- * 
+ *
  * Shows storage usage, lists media files, and enables "cut" downloads
  */
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from "react";
 import {
-  getStorageStatus,
-  StorageStatus,
-  StoredMedia,
-  cutMedia,
-  deleteMedia,
-  formatBytes,
-} from '../lib/storage';
+	cutMedia,
+	deleteMedia,
+	formatBytes,
+	getStorageStatus,
+	type StorageStatus,
+	type StoredMedia,
+} from "../lib/storage";
 
 interface StorageManagerProps {
-  onClose?: () => void;
+	onClose?: () => void;
 }
 
 export default function StorageManager({ onClose }: StorageManagerProps) {
-  const [status, setStatus] = useState<StorageStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+	const [status, setStatus] = useState<StorageStatus | null>(null);
+	const [loading, setLoading] = useState(true);
+	const [downloading, setDownloading] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadStatus();
-  }, []);
+	const loadStatus = async () => {
+		try {
+			setLoading(true);
+			const s = await getStorageStatus();
+			setStatus(s);
+		} catch (e: any) {
+			setError(e.message);
+		} finally {
+			setLoading(false);
+		}
+	};
 
-  const loadStatus = async () => {
-    try {
-      setLoading(true);
-      const s = await getStorageStatus();
-      setStatus(s);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+	useEffect(() => {
+		loadStatus();
+	}, []);
 
-  const handleDownloadAndDelete = async (media: StoredMedia) => {
-    setDownloading(media.id);
-    try {
-      await cutMedia(media.id);
-      await loadStatus(); // Refresh
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setDownloading(null);
-    }
-  };
+	const handleDownloadAndDelete = async (media: StoredMedia) => {
+		setDownloading(media.id);
+		try {
+			await cutMedia(media.id);
+			await loadStatus(); // Refresh
+		} catch (e: any) {
+			setError(e.message);
+		} finally {
+			setDownloading(null);
+		}
+	};
 
-  const handleDeleteOnly = async (media: StoredMedia) => {
-    if (!confirm(`Delete "${media.filename}"? This cannot be undone and you will lose the content forever.`)) {
-      return;
-    }
-    
-    try {
-      await deleteMedia(media.id);
-      await loadStatus();
-    } catch (e: any) {
-      setError(e.message);
-    }
-  };
+	const handleDeleteOnly = async (media: StoredMedia) => {
+		if (!confirm(`Delete "${media.filename}"? This cannot be undone and you will lose the content forever.`)) {
+			return;
+		}
 
-  if (loading) {
-    return (
-      <div className="storage-manager">
-        <div className="loading">
-          <div className="nexus-spinner" />
-          <p>Loading storage info...</p>
-        </div>
-        <style jsx>{styles}</style>
-      </div>
-    );
-  }
+		try {
+			await deleteMedia(media.id);
+			await loadStatus();
+		} catch (e: any) {
+			setError(e.message);
+		}
+	};
 
-  if (!status) {
-    return (
-      <div className="storage-manager">
-        <p className="error">Failed to load storage status</p>
-        <style jsx>{styles}</style>
-      </div>
-    );
-  }
+	if (loading) {
+		return (
+			<div className="storage-manager">
+				<div className="loading">
+					<div className="nexus-spinner" />
+					<p>Loading storage info...</p>
+				</div>
+				<style jsx>{styles}</style>
+			</div>
+		);
+	}
 
-  const { quota, mediaFiles, percentUsed, warningLevel, downloadRecommended } = status;
+	if (!status) {
+		return (
+			<div className="storage-manager">
+				<p className="error">Failed to load storage status</p>
+				<style jsx>{styles}</style>
+			</div>
+		);
+	}
 
-  return (
-    <div className="storage-manager">
-      {onClose && (
-        <div className="header">
-          <h3>💾 Storage Management</h3>
-          <button onClick={onClose} className="close-btn">✕</button>
-        </div>
-      )}
+	const { quota, mediaFiles, percentUsed, warningLevel, downloadRecommended } = status;
 
-      {/* Storage Bar */}
-      <div className="storage-overview">
-        <div className="storage-bar-container">
-          <div 
-            className={`storage-bar storage-bar-${warningLevel}`}
-            style={{ width: `${Math.min(percentUsed, 100)}%` }}
-          />
-        </div>
-        <div className="storage-stats">
-          <span className="storage-used">{formatBytes(quota.used)}</span>
-          <span className="storage-divider">/</span>
-          <span className="storage-limit">{formatBytes(quota.limit)}</span>
-          <span className="storage-percent">({percentUsed}%)</span>
-        </div>
-      </div>
+	return (
+		<div className="storage-manager">
+			{onClose && (
+				<div className="header">
+					<h3>💾 Storage Management</h3>
+					<button onClick={onClose} className="close-btn">
+						✕
+					</button>
+				</div>
+			)}
 
-      {/* Breakdown */}
-      <div className="storage-breakdown">
-        <div className="breakdown-item">
-          <span className="breakdown-label">📚 RAG Data</span>
-          <span className="breakdown-value">{formatBytes(quota.ragUsed)}</span>
-          <span className="breakdown-note">(stays in cloud)</span>
-        </div>
-        <div className="breakdown-item">
-          <span className="breakdown-label">🖼️ Media Files</span>
-          <span className="breakdown-value">{formatBytes(quota.mediaUsed)}</span>
-          <span className="breakdown-note">(download & delete)</span>
-        </div>
-      </div>
+			{/* Storage Bar */}
+			<div className="storage-overview">
+				<div className="storage-bar-container">
+					<div
+						className={`storage-bar storage-bar-${warningLevel}`}
+						style={{ width: `${Math.min(percentUsed, 100)}%` }}
+					/>
+				</div>
+				<div className="storage-stats">
+					<span className="storage-used">{formatBytes(quota.used)}</span>
+					<span className="storage-divider">/</span>
+					<span className="storage-limit">{formatBytes(quota.limit)}</span>
+					<span className="storage-percent">({percentUsed}%)</span>
+				</div>
+			</div>
 
-      {/* Warning Messages */}
-      {warningLevel === 'critical' && (
-        <div className="alert alert-critical">
-          ⚠️ Storage almost full! Download your media files to free up space.
-        </div>
-      )}
-      
-      {warningLevel === 'warning' && (
-        <div className="alert alert-warning">
-          📦 Storage getting full. Consider downloading older media files.
-        </div>
-      )}
+			{/* Breakdown */}
+			<div className="storage-breakdown">
+				<div className="breakdown-item">
+					<span className="breakdown-label">📚 RAG Data</span>
+					<span className="breakdown-value">{formatBytes(quota.ragUsed)}</span>
+					<span className="breakdown-note">(stays in cloud)</span>
+				</div>
+				<div className="breakdown-item">
+					<span className="breakdown-label">🖼️ Media Files</span>
+					<span className="breakdown-value">{formatBytes(quota.mediaUsed)}</span>
+					<span className="breakdown-note">(download & delete)</span>
+				</div>
+			</div>
 
-      {downloadRecommended && warningLevel === 'ok' && (
-        <div className="alert alert-info">
-          💡 You have media files ready to download. Remember: the value is in the signed local files!
-        </div>
-      )}
+			{/* Warning Messages */}
+			{warningLevel === "critical" && (
+				<div className="alert alert-critical">⚠️ Storage almost full! Download your media files to free up space.</div>
+			)}
 
-      {/* Media Files List */}
-      <div className="media-section">
-        <h4>🖼️ Generated Media ({mediaFiles.length} files)</h4>
-        
-        {mediaFiles.length === 0 ? (
-          <p className="no-media">No media files in cloud storage. Generate some images!</p>
-        ) : (
-          <div className="media-list">
-            {mediaFiles.map(media => (
-              <div key={media.id} className={`media-item ${media.downloaded ? 'downloaded' : ''}`}>
-                <div className="media-info">
-                  <div className="media-name">{media.filename}</div>
-                  <div className="media-meta">
-                    {formatBytes(media.size)} • {media.createdAt.toLocaleDateString()}
-                    {media.downloaded && <span className="badge-downloaded">✓ Downloaded</span>}
-                  </div>
-                </div>
-                
-                <div className="media-actions">
-                  <button
-                    onClick={() => handleDownloadAndDelete(media)}
-                    disabled={downloading === media.id}
-                    className="nexus-btn nexus-btn-primary nexus-btn-sm"
-                    title="Download file + metadata, then delete from cloud"
-                  >
-                    {downloading === media.id ? '...' : '📥 Cut'}
-                  </button>
-                  <button
-                    onClick={() => handleDeleteOnly(media)}
-                    disabled={downloading === media.id}
-                    className="nexus-btn nexus-btn-secondary nexus-btn-sm"
-                    title="Delete without downloading (data lost!)"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+			{warningLevel === "warning" && (
+				<div className="alert alert-warning">📦 Storage getting full. Consider downloading older media files.</div>
+			)}
 
-      {/* Philosophy Note */}
-      <div className="philosophy-note">
-        <h4>📋 Storage Philosophy</h4>
-        <p>
-          <strong>Cloud storage is temporary.</strong> Generated media should be downloaded 
-          with its provenance metadata sidecar. The "Cut" button downloads both files and 
-          removes them from the cloud - like taking a photo from the booth.
-        </p>
-        <p>
-          <strong>The value is in the signed files you keep!</strong> The metadata sidecar 
-          proves you created this content with Elara. Keep both files together.
-        </p>
-      </div>
+			{downloadRecommended && warningLevel === "ok" && (
+				<div className="alert alert-info">
+					💡 You have media files ready to download. Remember: the value is in the signed local files!
+				</div>
+			)}
 
-      {error && (
-        <div className="alert alert-critical">{error}</div>
-      )}
+			{/* Media Files List */}
+			<div className="media-section">
+				<h4>🖼️ Generated Media ({mediaFiles.length} files)</h4>
 
-      <style jsx>{styles}</style>
-    </div>
-  );
+				{mediaFiles.length === 0 ? (
+					<p className="no-media">No media files in cloud storage. Generate some images!</p>
+				) : (
+					<div className="media-list">
+						{mediaFiles.map((media) => (
+							<div key={media.id} className={`media-item ${media.downloaded ? "downloaded" : ""}`}>
+								<div className="media-info">
+									<div className="media-name">{media.filename}</div>
+									<div className="media-meta">
+										{formatBytes(media.size)} • {media.createdAt.toLocaleDateString()}
+										{media.downloaded && <span className="badge-downloaded">✓ Downloaded</span>}
+									</div>
+								</div>
+
+								<div className="media-actions">
+									<button
+										onClick={() => handleDownloadAndDelete(media)}
+										disabled={downloading === media.id}
+										className="nexus-btn nexus-btn-primary nexus-btn-sm"
+										title="Download file + metadata, then delete from cloud"
+									>
+										{downloading === media.id ? "..." : "📥 Cut"}
+									</button>
+									<button
+										onClick={() => handleDeleteOnly(media)}
+										disabled={downloading === media.id}
+										className="nexus-btn nexus-btn-secondary nexus-btn-sm"
+										title="Delete without downloading (data lost!)"
+									>
+										🗑️
+									</button>
+								</div>
+							</div>
+						))}
+					</div>
+				)}
+			</div>
+
+			{/* Philosophy Note */}
+			<div className="philosophy-note">
+				<h4>📋 Storage Philosophy</h4>
+				<p>
+					<strong>Cloud storage is temporary.</strong> Generated media should be downloaded with its provenance metadata
+					sidecar. The "Cut" button downloads both files and removes them from the cloud - like taking a photo from the
+					booth.
+				</p>
+				<p>
+					<strong>The value is in the signed files you keep!</strong> The metadata sidecar proves you created this
+					content with Elara. Keep both files together.
+				</p>
+			</div>
+
+			{error && <div className="alert alert-critical">{error}</div>}
+
+			<style jsx>{styles}</style>
+		</div>
+	);
 }
 
 const styles = `

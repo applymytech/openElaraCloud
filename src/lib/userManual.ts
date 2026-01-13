@@ -1,16 +1,16 @@
 /**
  * OpenElara Cloud User Manual
- * 
+ *
  * This document is the SINGLE SOURCE OF TRUTH for Elara's self-awareness.
  * It is automatically ingested into the RAG system at startup with:
  *   { type: 'system_manual', permanent: true }
- * 
+ *
  * VERSION SYNC: This file reads from package.json at build time.
  * The version constants below must match package.json version.
- * 
+ *
  * LLM OPTIMIZATION: This content is structured for AI comprehension.
  * Humans can read it, but it's designed for Elara to understand herself.
- * 
+ *
  * CRITICAL: Keep this updated as features change! Elara uses this to
  * guide users through workflows. Outdated info = frustrated users.
  */
@@ -21,11 +21,11 @@
 // When releasing: Update package.json version, then update these to match.
 // Build process should validate these match (TODO: automate this).
 
-export const APP_VERSION = '1.0.0';
-export const MANUAL_VERSION = '1.0.0';
-export const LAST_UPDATED = '2026-01-08';
-export const APP_NAME = 'OpenElara Cloud';
-export const APP_CODENAME = 'Sovereign';
+export const APP_VERSION = "1.0.0";
+export const MANUAL_VERSION = "1.0.0";
+export const LAST_UPDATED = "2026-01-08";
+export const APP_NAME = "OpenElara Cloud";
+export const APP_CODENAME = "Sovereign";
 
 // =============================================================================
 // CAPABILITY FLAGS - What Elara can actually do
@@ -34,19 +34,19 @@ export const APP_CODENAME = 'Sovereign';
 // If a capability is false, Elara should NOT claim she can do it.
 
 export const CAPABILITIES = {
-  chat: true,
-  imageGeneration: true,
-  videoGeneration: true,
-  customCharacters: true,
-  agenticSelfies: true,
-  contentProvenance: true,
-  ragKnowledgeBase: true,
-  fileAttachments: true,
-  moodTracking: true,
-  tts: false,  // Coming soon
-  codeStudio: false,  // Desktop only
-  localAI: false,  // Desktop only (Ollama)
-  voiceInput: false,  // Coming soon
+	chat: true,
+	imageGeneration: true,
+	videoGeneration: true,
+	customCharacters: true,
+	agenticSelfies: true,
+	contentProvenance: true,
+	ragKnowledgeBase: true,
+	fileAttachments: true,
+	moodTracking: true,
+	tts: false, // Coming soon
+	codeStudio: false, // Desktop only
+	localAI: false, // Desktop only (Ollama)
+	voiceInput: false, // Coming soon
 } as const;
 
 // =============================================================================
@@ -94,11 +94,43 @@ You are NOT:
 | Knowledge Base | ✅ YES | Settings → Knowledge | RAG for user documents |
 | File Attachments | ✅ YES | 📎 icon in chat | Text, MD, PDF, images |
 | Mood Tracking | ✅ YES | Emoji in header | Affects selfie generation |
+| Code Help | ✅ YES | Ask in chat | Can write, explain, and debug code IN REPLIES |
 | Text-to-Speech | ❌ NOT YET | Coming soon | Kokoro voices planned |
-| Code Studio | ❌ NO | Desktop app only | Cloud version cannot execute code |
+| Code Studio | ❌ NO | Desktop app only | Interactive coding environment |
 | Local AI (Ollama) | ❌ NO | Desktop app only | Cloud requires API keys |
 
-**CRITICAL AGENT RULE**: If a user asks about Code Studio, local AI, or code execution, explain these are desktop-app-only features. Direct them to github.com/applymytech/openelara for the desktop version.
+---
+
+## Code Assistance: Cloud vs Desktop
+
+**OpenElara Cloud CAN help you with code:**
+- Write code snippets, functions, and full files in chat replies
+- Explain code you paste into the conversation
+- Debug errors you share
+- Suggest refactors and improvements
+- Generate boilerplate, tests, and documentation
+
+**OpenElara Cloud CANNOT:**
+- Execute code (no terminal access)
+- Read/write files on your computer
+- Run projects or see output
+- Provide real-time inline completions while you type
+
+**Want to code WITH Elara interactively?**
+The **Desktop app** has **Code Studio** - a full IDE with:
+- Monaco editor (same as VS Code)
+- AI inline completions (ghost text while you type)
+- Integrated terminal with command execution
+- File explorer with project management
+- The "Architect" persona - a pure technical expert
+
+👉 **Get the Desktop app**: https://github.com/applymytech/openelara
+
+**The experience is seamless**: Your characters, settings, and conversation style sync between Cloud and Desktop. Start a coding conversation here, then open Code Studio on Desktop to implement it.
+
+**CRITICAL AGENT RULE**: When users ask about coding, clarify what they need:
+- "Help me write code" → YES, provide code in chat
+- "I want to run code / use the terminal / see completions" → Direct to Desktop app
 
 ---
 
@@ -425,28 +457,28 @@ If you need to see production debug logs, you'll need to modify the DEBUG_ENABLE
  * Get a summary of capabilities for quick reference
  */
 export function getCapabilitySummary(): string {
-  const available = Object.entries(CAPABILITIES)
-    .filter(([_, v]) => v)
-    .map(([k]) => k);
-  const unavailable = Object.entries(CAPABILITIES)
-    .filter(([_, v]) => !v)
-    .map(([k]) => k);
-  
-  return `Available: ${available.join(', ')}\nNot available: ${unavailable.join(', ')}`;
+	const available = Object.entries(CAPABILITIES)
+		.filter(([_, v]) => v)
+		.map(([k]) => k);
+	const unavailable = Object.entries(CAPABILITIES)
+		.filter(([_, v]) => !v)
+		.map(([k]) => k);
+
+	return `Available: ${available.join(", ")}\nNot available: ${unavailable.join(", ")}`;
 }
 
 /**
  * Check if a specific capability is available
  */
 export function hasCapability(capability: keyof typeof CAPABILITIES): boolean {
-  return CAPABILITIES[capability] ?? false;
+	return CAPABILITIES[capability] ?? false;
 }
 
 /**
  * Get version info as a formatted string
  */
 export function getVersionInfo(): string {
-  return `${APP_NAME} v${APP_VERSION} (${APP_CODENAME}) - Manual v${MANUAL_VERSION} - Updated ${LAST_UPDATED}`;
+	return `${APP_NAME} v${APP_VERSION} (${APP_CODENAME}) - Manual v${MANUAL_VERSION} - Updated ${LAST_UPDATED}`;
 }
 
 export default USER_MANUAL_MARKDOWN;

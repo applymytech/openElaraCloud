@@ -1,6 +1,6 @@
 /**
  * MessageContent - Intelligent Markdown & Code Renderer
- * 
+ *
  * Features:
  * - Renders markdown formatting (bold, italic, lists, etc.)
  * - Smart code block detection:
@@ -10,25 +10,25 @@
  * - Never executes HTML/JS (display only)
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { marked } from 'marked';
-import hljs from 'highlight.js';
-import 'highlight.js/styles/github-dark.css';
+import hljs from "highlight.js";
+import { marked } from "marked";
+import { useEffect, useRef, useState } from "react";
+import "highlight.js/styles/github-dark.css";
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 interface MessageContentProps {
-  content: string;
-  role: 'user' | 'assistant' | 'system' | 'tool';
+	content: string;
+	role: "user" | "assistant" | "system" | "tool";
 }
 
 interface CodeBlock {
-  language: string;
-  code: string;
-  isDocument: boolean;
-  isChart: boolean;
+	language: string;
+	code: string;
+	isDocument: boolean;
+	isChart: boolean;
 }
 
 // ============================================================================
@@ -36,40 +36,46 @@ interface CodeBlock {
 // ============================================================================
 
 const DOCUMENT_INDICATORS = [
-  '# ', '## ', '### ',  // Markdown headings
-  '**Table of Contents**',
-  '**Overview**',
-  '**Introduction**',
-  '**Summary**',
-  '---',  // Horizontal rules
-  '| ', // Tables
+	"# ",
+	"## ",
+	"### ", // Markdown headings
+	"**Table of Contents**",
+	"**Overview**",
+	"**Introduction**",
+	"**Summary**",
+	"---", // Horizontal rules
+	"| ", // Tables
 ];
 
 function isMarkdownDocument(code: string): boolean {
-  const lines = code.trim().split('\n');
-  
-  // Check for document-like structure
-  const hasHeadings = lines.some(line => line.trim().startsWith('#'));
-  const hasMultipleHeadings = lines.filter(line => line.trim().startsWith('#')).length >= 2;
-  const hasDocumentWords = DOCUMENT_INDICATORS.some(indicator => 
-    code.includes(indicator)
-  );
-  
-  // If it has multiple headings or document structure, render as document
-  return hasMultipleHeadings || (hasHeadings && hasDocumentWords);
+	const lines = code.trim().split("\n");
+
+	// Check for document-like structure
+	const hasHeadings = lines.some((line) => line.trim().startsWith("#"));
+	const hasMultipleHeadings = lines.filter((line) => line.trim().startsWith("#")).length >= 2;
+	const hasDocumentWords = DOCUMENT_INDICATORS.some((indicator) => code.includes(indicator));
+
+	// If it has multiple headings or document structure, render as document
+	return hasMultipleHeadings || (hasHeadings && hasDocumentWords);
 }
 
 function isChartCode(language: string, code: string): boolean {
-  // Detect chart/diagram libraries
-  const chartKeywords = [
-    'mermaid', 'chart.js', 'plotly', 'chart', 'graph',
-    'diagram', 'flowchart', 'sequence', 'gantt'
-  ];
-  
-  return chartKeywords.some(keyword => 
-    language.toLowerCase().includes(keyword) || 
-    code.toLowerCase().includes(keyword)
-  );
+	// Detect chart/diagram libraries
+	const chartKeywords = [
+		"mermaid",
+		"chart.js",
+		"plotly",
+		"chart",
+		"graph",
+		"diagram",
+		"flowchart",
+		"sequence",
+		"gantt",
+	];
+
+	return chartKeywords.some(
+		(keyword) => language.toLowerCase().includes(keyword) || code.toLowerCase().includes(keyword),
+	);
 }
 
 // ============================================================================
@@ -77,42 +83,40 @@ function isChartCode(language: string, code: string): boolean {
 // ============================================================================
 
 function parseCodeBlocks(content: string): (string | CodeBlock)[] {
-  const parts: (string | CodeBlock)[] = [];
-  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-  let lastIndex = 0;
-  let match;
-  
-  while ((match = codeBlockRegex.exec(content)) !== null) {
-    // Add text before code block
-    if (match.index > lastIndex) {
-      parts.push(content.slice(lastIndex, match.index));
-    }
-    
-    const language = match[1] || 'text';
-    const code = match[2].trim();
-    
-    // Determine how to render this block
-    const isDocument = language.toLowerCase() === 'markdown' || 
-                      (language === 'md') ||
-                      isMarkdownDocument(code);
-    const isChart = isChartCode(language, code);
-    
-    parts.push({
-      language,
-      code,
-      isDocument,
-      isChart,
-    });
-    
-    lastIndex = match.index + match[0].length;
-  }
-  
-  // Add remaining text
-  if (lastIndex < content.length) {
-    parts.push(content.slice(lastIndex));
-  }
-  
-  return parts.length > 0 ? parts : [content];
+	const parts: (string | CodeBlock)[] = [];
+	const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+	let lastIndex = 0;
+	let match;
+
+	while ((match = codeBlockRegex.exec(content)) !== null) {
+		// Add text before code block
+		if (match.index > lastIndex) {
+			parts.push(content.slice(lastIndex, match.index));
+		}
+
+		const language = match[1] || "text";
+		const code = match[2].trim();
+
+		// Determine how to render this block
+		const isDocument = language.toLowerCase() === "markdown" || language === "md" || isMarkdownDocument(code);
+		const isChart = isChartCode(language, code);
+
+		parts.push({
+			language,
+			code,
+			isDocument,
+			isChart,
+		});
+
+		lastIndex = match.index + match[0].length;
+	}
+
+	// Add remaining text
+	if (lastIndex < content.length) {
+		parts.push(content.slice(lastIndex));
+	}
+
+	return parts.length > 0 ? parts : [content];
 }
 
 // ============================================================================
@@ -120,13 +124,13 @@ function parseCodeBlocks(content: string): (string | CodeBlock)[] {
 // ============================================================================
 
 function renderMarkdown(text: string): string {
-  // Configure marked for safe rendering
-  marked.setOptions({
-    breaks: true,
-    gfm: true,
-  });
-  
-  return marked.parse(text) as string;
+	// Configure marked for safe rendering
+	marked.setOptions({
+		breaks: true,
+		gfm: true,
+	});
+
+	return marked.parse(text) as string;
 }
 
 // ============================================================================
@@ -134,82 +138,80 @@ function renderMarkdown(text: string): string {
 // ============================================================================
 
 interface CodeBlockRendererProps {
-  block: CodeBlock;
+	block: CodeBlock;
 }
 
 function CodeBlockRenderer({ block }: CodeBlockRendererProps) {
-  const codeRef = useRef<HTMLElement>(null);
-  const [copied, setCopied] = useState(false);
-  
-  useEffect(() => {
-    if (codeRef.current && !block.isDocument) {
-      hljs.highlightElement(codeRef.current);
-    }
-  }, [block.code, block.isDocument]);
-  
-  const handleCopy = () => {
-    navigator.clipboard.writeText(block.code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-  
-  // Render as visual document
-  if (block.isDocument) {
-    return (
-      <div className="message-document">
-        <div className="document-header">
-          <span className="document-icon">📄</span>
-          <span className="document-label">Document</span>
-          <button className="document-copy-btn" onClick={handleCopy}>
-            {copied ? '✓ Copied' : '📋 Copy'}
-          </button>
-        </div>
-        <div 
-          className="document-content markdown-body"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(block.code) }}
-        />
-      </div>
-    );
-  }
-  
-  // Render as chart/diagram (future: add Mermaid, Chart.js support)
-  if (block.isChart) {
-    return (
-      <div className="message-code-block">
-        <div className="code-header">
-          <span className="code-language">{block.language} (Chart - Display Only)</span>
-          <button className="code-copy-btn" onClick={handleCopy}>
-            {copied ? '✓ Copied' : '📋'}
-          </button>
-        </div>
-        <pre className="code-pre">
-          <code ref={codeRef} className={`language-${block.language}`}>
-            {block.code}
-          </code>
-        </pre>
-        <div className="code-footer">
-          ℹ️ Chart visualization coming soon
-        </div>
-      </div>
-    );
-  }
-  
-  // Render as code block
-  return (
-    <div className="message-code-block">
-      <div className="code-header">
-        <span className="code-language">{block.language}</span>
-        <button className="code-copy-btn" onClick={handleCopy}>
-          {copied ? '✓ Copied' : '📋'}
-        </button>
-      </div>
-      <pre className="code-pre">
-        <code ref={codeRef} className={`language-${block.language}`}>
-          {block.code}
-        </code>
-      </pre>
-    </div>
-  );
+	const codeRef = useRef<HTMLElement>(null);
+	const [copied, setCopied] = useState(false);
+
+	useEffect(() => {
+		if (codeRef.current && !block.isDocument) {
+			hljs.highlightElement(codeRef.current);
+		}
+	}, [block.isDocument]);
+
+	const handleCopy = () => {
+		navigator.clipboard.writeText(block.code);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 2000);
+	};
+
+	// Render as visual document
+	if (block.isDocument) {
+		return (
+			<div className="message-document">
+				<div className="document-header">
+					<span className="document-icon">📄</span>
+					<span className="document-label">Document</span>
+					<button className="document-copy-btn" onClick={handleCopy}>
+						{copied ? "✓ Copied" : "📋 Copy"}
+					</button>
+				</div>
+				<div
+					className="document-content markdown-body"
+					dangerouslySetInnerHTML={{ __html: renderMarkdown(block.code) }}
+				/>
+			</div>
+		);
+	}
+
+	// Render as chart/diagram (future: add Mermaid, Chart.js support)
+	if (block.isChart) {
+		return (
+			<div className="message-code-block">
+				<div className="code-header">
+					<span className="code-language">{block.language} (Chart - Display Only)</span>
+					<button className="code-copy-btn" onClick={handleCopy}>
+						{copied ? "✓ Copied" : "📋"}
+					</button>
+				</div>
+				<pre className="code-pre">
+					<code ref={codeRef} className={`language-${block.language}`}>
+						{block.code}
+					</code>
+				</pre>
+				<div className="code-footer">ℹ️ Chart visualization coming soon</div>
+			</div>
+		);
+	}
+
+	// Render as code block
+	return (
+		<div className="message-code-block">
+			<div className="code-header">
+				<span className="code-language">{block.language}</span>
+				<button className="code-copy-btn" onClick={handleCopy}>
+					{copied ? "✓ Copied" : "📋"}
+				</button>
+			</div>
+			<pre className="code-pre">
+				<code ref={codeRef} className={`language-${block.language}`}>
+					{block.code}
+				</code>
+			</pre>
+		</div>
+	);
 }
 
 // ============================================================================
@@ -217,27 +219,27 @@ function CodeBlockRenderer({ block }: CodeBlockRendererProps) {
 // ============================================================================
 
 export default function MessageContent({ content, role }: MessageContentProps) {
-  const parts = parseCodeBlocks(content);
-  
-  return (
-    <div className="message-content-wrapper">
-      {parts.map((part, index) => {
-        if (typeof part === 'string') {
-          // Render markdown text
-          return (
-            <div 
-              key={index}
-              className="message-text markdown-body"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(part) }}
-            />
-          );
-        } else {
-          // Render code block
-          return <CodeBlockRenderer key={index} block={part} />;
-        }
-      })}
-      
-      <style jsx>{`
+	const parts = parseCodeBlocks(content);
+
+	return (
+		<div className="message-content-wrapper">
+			{parts.map((part, index) => {
+				if (typeof part === "string") {
+					// Render markdown text
+					return (
+						<div
+							key={index}
+							className="message-text markdown-body"
+							dangerouslySetInnerHTML={{ __html: renderMarkdown(part) }}
+						/>
+					);
+				} else {
+					// Render code block
+					return <CodeBlockRenderer key={index} block={part} />;
+				}
+			})}
+
+			<style jsx>{`
         .message-content-wrapper {
           display: flex;
           flex-direction: column;
@@ -505,6 +507,6 @@ export default function MessageContent({ content, role }: MessageContentProps) {
           }
         }
       `}</style>
-    </div>
-  );
+		</div>
+	);
 }

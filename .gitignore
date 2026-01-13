@@ -46,11 +46,19 @@ yarn-debug.log*
 yarn-error.log*
 firebase-debug.log*
 
+# Preflight marker (local state)
+.preflight-passed
+
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+
+# Developer working docs (LLM scratch space - can be nuked)
+devdocs/working-docs/*
+!devdocs/working-docs/.gitkeep
+!devdocs/working-docs/README.md
 
 # OS
 .DS_Store
@@ -63,6 +71,9 @@ next-env.d.ts
 # Testing
 coverage/
 .nyc_output/
+test-images-*
+image-model-verification-*.json
+tools/node_modules/
 
 # Misc
 *.log

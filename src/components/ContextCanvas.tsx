@@ -1,9 +1,9 @@
 /**
  * Context Canvas Component
- * 
+ *
  * Desktop-style persistent document viewer for OpenElara Cloud.
  * Users can pin files that stay in context across the conversation.
- * 
+ *
  * Features:
  * - Pin/unpin files with zero truncation
  * - Token counter and budget tracking (up to 75% of context window)
@@ -11,277 +11,297 @@
  * - Clear visual separation of documents
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from "react";
 import {
-  loadContextCanvas,
-  pinFile,
-  unpinFile,
-  clearCanvas,
-  getPinnedFiles,
-  getCanvasStats,
-  getTokenStats,
-  buildFullCanvasContext,
-  type ContextCanvasFile,
-  MAX_FILE_SIZE,
-  MAX_FILES,
-  DEFAULT_MAX_TOKENS,
-  SUPPORTED_EXTENSIONS,
-} from '../lib/contextCanvas';
+	type ContextCanvasFile,
+	clearCanvas,
+	DEFAULT_MAX_TOKENS,
+	getPinnedFiles,
+	getTokenStats,
+	loadContextCanvas,
+	MAX_FILE_SIZE,
+	MAX_FILES,
+	pinFile,
+	SUPPORTED_EXTENSIONS,
+	unpinFile,
+} from "../lib/contextCanvas";
 
 interface ContextCanvasProps {
-  isOpen: boolean;
-  onClose: () => void;
-  maxTokenBudget?: number;
+	isOpen: boolean;
+	onClose: () => void;
+	maxTokenBudget?: number;
 }
 
-export default function ContextCanvas({ 
-  isOpen, 
-  onClose, 
-  maxTokenBudget = DEFAULT_MAX_TOKENS 
-}: ContextCanvasProps) {
-  const [files, setFiles] = useState<ContextCanvasFile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const [tokenStats, setTokenStats] = useState({ usedTokens: 0, maxTokens: maxTokenBudget, usagePercent: 0, remainingTokens: maxTokenBudget });
-  const [expandedFile, setExpandedFile] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+export default function ContextCanvas({ isOpen, onClose, maxTokenBudget = DEFAULT_MAX_TOKENS }: ContextCanvasProps) {
+	const [files, setFiles] = useState<ContextCanvasFile[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [dragging, setDragging] = useState(false);
+	const [tokenStats, setTokenStats] = useState({
+		usedTokens: 0,
+		maxTokens: maxTokenBudget,
+		usagePercent: 0,
+		remainingTokens: maxTokenBudget,
+	});
+	const [expandedFile, setExpandedFile] = useState<string | null>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load canvas on mount
-  useEffect(() => {
-    if (isOpen) {
-      loadCanvas();
-    }
-  }, [isOpen]);
+	// Load canvas on mount
+	const loadCanvas = async () => {
+		setLoading(true);
+		setError(null);
+		try {
+			await loadContextCanvas();
+			setFiles(getPinnedFiles());
+			setTokenStats(getTokenStats(maxTokenBudget));
+		} catch (e: any) {
+			setError(e.message);
+		} finally {
+			setLoading(false);
+		}
+	};
 
-  const loadCanvas = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      await loadContextCanvas();
-      setFiles(getPinnedFiles());
-      setTokenStats(getTokenStats(maxTokenBudget));
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+	useEffect(() => {
+		if (isOpen) {
+			loadCanvas();
+		}
+	}, [isOpen]);
 
-  const handleFileUpload = async (uploadedFiles: FileList | File[]) => {
-    setError(null);
-    const fileArray = Array.from(uploadedFiles);
-    
-    for (const file of fileArray) {
-      try {
-        await pinFile(file);
-      } catch (e: any) {
-        setError(e.message);
-        break;
-      }
-    }
-    
-    setFiles(getPinnedFiles());
-    setTokenStats(getTokenStats(maxTokenBudget));
-  };
+	const handleFileUpload = async (uploadedFiles: FileList | File[]) => {
+		setError(null);
+		const fileArray = Array.from(uploadedFiles);
 
-  const handleUnpin = async (filename: string) => {
-    try {
-      await unpinFile(filename);
-      setFiles(getPinnedFiles());
-      setTokenStats(getTokenStats(maxTokenBudget));
-    } catch (e: any) {
-      setError(e.message);
-    }
-  };
+		for (const file of fileArray) {
+			try {
+				await pinFile(file);
+			} catch (e: any) {
+				setError(e.message);
+				break;
+			}
+		}
 
-  const handleClearAll = async () => {
-    if (!confirm('Clear all pinned files from the context canvas?')) return;
-    try {
-      await clearCanvas();
-      setFiles([]);
-      setTokenStats(getTokenStats(maxTokenBudget));
-    } catch (e: any) {
-      setError(e.message);
-    }
-  };
+		setFiles(getPinnedFiles());
+		setTokenStats(getTokenStats(maxTokenBudget));
+	};
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(true);
-  };
+	const handleUnpin = async (filename: string) => {
+		try {
+			await unpinFile(filename);
+			setFiles(getPinnedFiles());
+			setTokenStats(getTokenStats(maxTokenBudget));
+		} catch (e: any) {
+			setError(e.message);
+		}
+	};
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-  };
+	const handleClearAll = async () => {
+		if (!confirm("Clear all pinned files from the context canvas?")) {
+			return;
+		}
+		try {
+			await clearCanvas();
+			setFiles([]);
+			setTokenStats(getTokenStats(maxTokenBudget));
+		} catch (e: any) {
+			setError(e.message);
+		}
+	};
 
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    
-    const droppedFiles = e.dataTransfer.files;
-    if (droppedFiles.length > 0) {
-      await handleFileUpload(droppedFiles);
-    }
-  };
+	const handleDragOver = (e: React.DragEvent) => {
+		e.preventDefault();
+		setDragging(true);
+	};
 
-  const formatBytes = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+	const handleDragLeave = (e: React.DragEvent) => {
+		e.preventDefault();
+		setDragging(false);
+	};
 
-  if (!isOpen) return null;
+	const handleDrop = async (e: React.DragEvent) => {
+		e.preventDefault();
+		setDragging(false);
 
-  return (
-    <div className="context-canvas-overlay" onClick={onClose}>
-      <div className="context-canvas-panel" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div className="canvas-header">
-          <div className="canvas-title">
-            <span className="canvas-icon">📌</span>
-            <h3>Context Canvas</h3>
-            <span className="canvas-subtitle">Persistent documents for AI reference</span>
-          </div>
-          <button className="close-btn" onClick={onClose}>✕</button>
-        </div>
+		const droppedFiles = e.dataTransfer.files;
+		if (droppedFiles.length > 0) {
+			await handleFileUpload(droppedFiles);
+		}
+	};
 
-        {/* Token Budget Bar */}
-        <div className="token-budget-section">
-          <div className="token-budget-header">
-            <span className="token-label">Token Budget</span>
-            <span className="token-count">
-              {tokenStats.usedTokens.toLocaleString()} / {tokenStats.maxTokens.toLocaleString()} tokens
-            </span>
-          </div>
-          <div className="token-budget-bar">
-            <div 
-              className={`token-budget-fill ${tokenStats.usagePercent > 90 ? 'warning' : ''} ${tokenStats.usagePercent > 100 ? 'exceeded' : ''}`}
-              style={{ width: `${Math.min(tokenStats.usagePercent, 100)}%` }}
-            />
-          </div>
-          <div className="token-budget-hint">
-            {tokenStats.usagePercent < 75 
-              ? `${tokenStats.remainingTokens.toLocaleString()} tokens available (75% max recommended)`
-              : tokenStats.usagePercent < 100
-              ? '⚠️ Approaching token limit - consider unpinning some files'
-              : '🚨 Token limit exceeded - some files may be excluded'}
-          </div>
-        </div>
+	const formatBytes = (bytes: number): string => {
+		if (bytes < 1024) {
+			return `${bytes} B`;
+		}
+		if (bytes < 1024 * 1024) {
+			return `${(bytes / 1024).toFixed(1)} KB`;
+		}
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	};
 
-        {/* Drop Zone */}
-        <div 
-          className={`drop-zone ${dragging ? 'dragging' : ''}`}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept={SUPPORTED_EXTENSIONS.join(',')}
-            onChange={(e) => e.target.files && handleFileUpload(e.target.files)}
-            style={{ display: 'none' }}
-          />
-          <div className="drop-zone-content">
-            <span className="drop-icon">📂</span>
-            <span className="drop-text">
-              {dragging 
-                ? 'Drop files here!' 
-                : 'Drag & drop files or click to upload'}
-            </span>
-            <span className="drop-hint">
-              Max {formatBytes(MAX_FILE_SIZE)} per file • {MAX_FILES} files max • Supported: .txt, .md, .json, .js, .ts, .py, etc.
-            </span>
-          </div>
-        </div>
+	if (!isOpen) {
+		return null;
+	}
 
-        {/* Error Display */}
-        {error && (
-          <div className="canvas-error">
-            ⚠️ {error}
-          </div>
-        )}
+	return (
+		<div className="context-canvas-overlay" onClick={onClose}>
+			<div className="context-canvas-panel" onClick={(e) => e.stopPropagation()}>
+				{/* Header */}
+				<div className="canvas-header">
+					<div className="canvas-title">
+						<span className="canvas-icon">📌</span>
+						<h3>Context Canvas</h3>
+						<span className="canvas-subtitle">Persistent documents for AI reference</span>
+					</div>
+					<button className="close-btn" onClick={onClose}>
+						✕
+					</button>
+				</div>
 
-        {/* File List */}
-        <div className="canvas-files">
-          {loading ? (
-            <div className="canvas-loading">Loading canvas...</div>
-          ) : files.length === 0 ? (
-            <div className="canvas-empty">
-              <span className="empty-icon">📄</span>
-              <p>No files pinned yet</p>
-              <p className="empty-hint">Pin documents here to keep them in context throughout your conversation. Unlike file attachments, these persist until you unpin them.</p>
-            </div>
-          ) : (
-            <>
-              <div className="files-header">
-                <span>{files.length} file{files.length !== 1 ? 's' : ''} pinned</span>
-                <button className="clear-all-btn" onClick={handleClearAll}>
-                  Clear All
-                </button>
-              </div>
-              <div className="files-list">
-                {files.map((file) => (
-                  <div key={file.id} className="canvas-file">
-                    <div 
-                      className="file-header"
-                      onClick={() => setExpandedFile(expandedFile === file.filename ? null : file.filename)}
-                    >
-                      <div className="file-info">
-                        <span className="file-icon">
-                          {file.metadata?.language === 'javascript' || file.metadata?.language === 'typescript' ? '📜' :
-                           file.metadata?.language === 'python' ? '🐍' :
-                           file.metadata?.language === 'markdown' ? '📝' :
-                           file.metadata?.language === 'json' ? '📋' : '📄'}
-                        </span>
-                        <div className="file-details">
-                          <span className="file-name">{file.filename}</span>
-                          <span className="file-meta">
-                            {file.metadata?.language || 'text'} • {file.metadata?.lineCount} lines • {formatBytes(file.size)}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="file-actions">
-                        <span className="file-modified" title={`Last modified: ${file.updatedAt.toLocaleString()}`}>
-                          {file.updatedAt.toLocaleDateString()}
-                        </span>
-                        <button 
-                          className="unpin-btn" 
-                          onClick={(e) => { e.stopPropagation(); handleUnpin(file.filename); }}
-                          title="Unpin file"
-                        >
-                          📌
-                        </button>
-                        <span className="expand-icon">
-                          {expandedFile === file.filename ? '▼' : '▶'}
-                        </span>
-                      </div>
-                    </div>
-                    {expandedFile === file.filename && (
-                      <div className="file-content-preview">
-                        <pre>{file.content.slice(0, 2000)}{file.content.length > 2000 ? '\n... (preview truncated)' : ''}</pre>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+				{/* Token Budget Bar */}
+				<div className="token-budget-section">
+					<div className="token-budget-header">
+						<span className="token-label">Token Budget</span>
+						<span className="token-count">
+							{tokenStats.usedTokens.toLocaleString()} / {tokenStats.maxTokens.toLocaleString()} tokens
+						</span>
+					</div>
+					<div className="token-budget-bar">
+						<div
+							className={`token-budget-fill ${tokenStats.usagePercent > 90 ? "warning" : ""} ${tokenStats.usagePercent > 100 ? "exceeded" : ""}`}
+							style={{ width: `${Math.min(tokenStats.usagePercent, 100)}%` }}
+						/>
+					</div>
+					<div className="token-budget-hint">
+						{tokenStats.usagePercent < 75
+							? `${tokenStats.remainingTokens.toLocaleString()} tokens available (75% max recommended)`
+							: tokenStats.usagePercent < 100
+								? "⚠️ Approaching token limit - consider unpinning some files"
+								: "🚨 Token limit exceeded - some files may be excluded"}
+					</div>
+				</div>
 
-        {/* Footer with info */}
-        <div className="canvas-footer">
-          <div className="footer-info">
-            <span className="info-icon">💡</span>
-            <span>Files in the Context Canvas are sent to the AI with ZERO truncation. Token counter helps you stay within model limits.</span>
-          </div>
-        </div>
+				{/* Drop Zone */}
+				<div
+					className={`drop-zone ${dragging ? "dragging" : ""}`}
+					onDragOver={handleDragOver}
+					onDragLeave={handleDragLeave}
+					onDrop={handleDrop}
+					onClick={() => fileInputRef.current?.click()}
+				>
+					<input
+						ref={fileInputRef}
+						type="file"
+						multiple
+						accept={SUPPORTED_EXTENSIONS.join(",")}
+						onChange={(e) => e.target.files && handleFileUpload(e.target.files)}
+						style={{ display: "none" }}
+					/>
+					<div className="drop-zone-content">
+						<span className="drop-icon">📂</span>
+						<span className="drop-text">{dragging ? "Drop files here!" : "Drag & drop files or click to upload"}</span>
+						<span className="drop-hint">
+							Max {formatBytes(MAX_FILE_SIZE)} per file • {MAX_FILES} files max • Supported: .txt, .md, .json, .js, .ts,
+							.py, etc.
+						</span>
+					</div>
+				</div>
 
-        <style jsx>{`
+				{/* Error Display */}
+				{error && <div className="canvas-error">⚠️ {error}</div>}
+
+				{/* File List */}
+				<div className="canvas-files">
+					{loading ? (
+						<div className="canvas-loading">Loading canvas...</div>
+					) : files.length === 0 ? (
+						<div className="canvas-empty">
+							<span className="empty-icon">📄</span>
+							<p>No files pinned yet</p>
+							<p className="empty-hint">
+								Pin documents here to keep them in context throughout your conversation. Unlike file attachments, these
+								persist until you unpin them.
+							</p>
+						</div>
+					) : (
+						<>
+							<div className="files-header">
+								<span>
+									{files.length} file{files.length !== 1 ? "s" : ""} pinned
+								</span>
+								<button className="clear-all-btn" onClick={handleClearAll}>
+									Clear All
+								</button>
+							</div>
+							<div className="files-list">
+								{files.map((file) => (
+									<div key={file.id} className="canvas-file">
+										<div
+											className="file-header"
+											onClick={() => setExpandedFile(expandedFile === file.filename ? null : file.filename)}
+										>
+											<div className="file-info">
+												<span className="file-icon">
+													{file.metadata?.language === "javascript" || file.metadata?.language === "typescript"
+														? "📜"
+														: file.metadata?.language === "python"
+															? "🐍"
+															: file.metadata?.language === "markdown"
+																? "📝"
+																: file.metadata?.language === "json"
+																	? "📋"
+																	: "📄"}
+												</span>
+												<div className="file-details">
+													<span className="file-name">{file.filename}</span>
+													<span className="file-meta">
+														{file.metadata?.language || "text"} • {file.metadata?.lineCount} lines •{" "}
+														{formatBytes(file.size)}
+													</span>
+												</div>
+											</div>
+											<div className="file-actions">
+												<span className="file-modified" title={`Last modified: ${file.updatedAt.toLocaleString()}`}>
+													{file.updatedAt.toLocaleDateString()}
+												</span>
+												<button
+													className="unpin-btn"
+													onClick={(e) => {
+														e.stopPropagation();
+														handleUnpin(file.filename);
+													}}
+													title="Unpin file"
+												>
+													📌
+												</button>
+												<span className="expand-icon">{expandedFile === file.filename ? "▼" : "▶"}</span>
+											</div>
+										</div>
+										{expandedFile === file.filename && (
+											<div className="file-content-preview">
+												<pre>
+													{file.content.slice(0, 2000)}
+													{file.content.length > 2000 ? "\n... (preview truncated)" : ""}
+												</pre>
+											</div>
+										)}
+									</div>
+								))}
+							</div>
+						</>
+					)}
+				</div>
+
+				{/* Footer with info */}
+				<div className="canvas-footer">
+					<div className="footer-info">
+						<span className="info-icon">💡</span>
+						<span>
+							Files in the Context Canvas are sent to the AI with ZERO truncation. Token counter helps you stay within
+							model limits.
+						</span>
+					</div>
+				</div>
+
+				<style jsx>{`
           .context-canvas-overlay {
             position: fixed;
             inset: 0;
@@ -619,7 +639,7 @@ export default function ContextCanvas({
             font-size: 16px;
           }
         `}</style>
-      </div>
-    </div>
-  );
+			</div>
+		</div>
+	);
 }

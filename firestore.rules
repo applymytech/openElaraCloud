@@ -2,9 +2,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function: Is user authenticated?
-    function isAuthenticated() {
-      return request.auth != null;
+    // ========================================
+    // SINGLE-USER SOVEREIGN DEPLOYMENT
+    // ========================================
+    // This is a private deployment for ONE authorized user.
+    // Change the email below to YOUR Firebase Auth email.
+    // ========================================
+    
+    // The ONE authorized user for this deployment
+    function isAuthorizedUser() {
+      return request.auth != null && 
+             request.auth.token.email == 'andrewquartly@pm.me';
     }
     
     // Helper function: Is this the user's own document?
@@ -13,31 +21,28 @@ service cloud.firestore {
     }
     
     // ========================================
-    // USER PROFILES
+    // USER DATA
     // ========================================
     match /users/{userId} {
-      // Authenticated users can access their own data
-      // Trial enforcement happens at app level (frontend + Cloud Functions)
-      allow read: if isAuthenticated() && isOwner(userId);
+      // Only the authorized user can access their own data
+      allow read: if isAuthorizedUser() && isOwner(userId);
       
-      // Write with size validation (prevent abuse)
-      allow write: if isAuthenticated() && 
+      // Write with size validation
+      allow write: if isAuthorizedUser() && 
                       isOwner(userId) &&
                       request.resource.size() < 500000; // 500KB max per doc
       
-      // All subcollections
+      // All subcollections (chats, settings, images, videos, etc.)
       match /{subcollection}/{docId} {
-        allow read: if isAuthenticated() && isOwner(userId);
-        
-        // Limit subcollection document size
-        allow write: if isAuthenticated() && 
+        allow read: if isAuthorizedUser() && isOwner(userId);
+        allow write: if isAuthorizedUser() && 
                         isOwner(userId) &&
                         request.resource.size() < 500000;
         
-        // Nested collections
+        // Nested collections (messages within chats, etc.)
         match /{nestedCollection}/{nestedDocId} {
-          allow read: if isAuthenticated() && isOwner(userId);
-          allow write: if isAuthenticated() && 
+          allow read: if isAuthorizedUser() && isOwner(userId);
+          allow write: if isAuthorizedUser() && 
                           isOwner(userId) &&
                           request.resource.size() < 500000;
         }
@@ -45,18 +50,11 @@ service cloud.firestore {
     }
     
     // ========================================
-    // PUBLIC DATA (read-only)
+    // PUBLIC DATA (read-only for authorized user)
     // ========================================
     match /public/{document=**} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthorizedUser();
       allow write: if false; // Admin only via admin SDK
-    }
-    
-    // ========================================
-    // RATE LIMITING (internal, functions only)
-    // ========================================
-    match /_rateLimits/{limitId} {
-      allow read, write: if false; // Functions only
     }
     
     // ========================================

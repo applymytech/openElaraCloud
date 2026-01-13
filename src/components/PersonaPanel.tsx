@@ -10,7 +10,8 @@
  * - Active character indicator
  */
 
-import { Character, ELARA, AERON, AELIRA, ANDROS, getActiveCharacter, setActiveCharacter } from '@/lib/characters';
+import { type Character, ELARA, AERON, AELIRA, ANDROS, getActiveCharacter, setActiveCharacter } from '@/lib/characters';
+import Image from 'next/image';
 import { useState, useEffect } from 'react';
 
 interface PersonaPanelProps {
@@ -52,7 +53,7 @@ export default function PersonaPanel({ isOpen, onClose, onCharacterSelected }: P
 
   useEffect(() => {
     setActive(getActiveCharacter());
-  }, [isOpen]);
+  }, []);
 
   const handleSelect = (character: Character) => {
     setActiveCharacter(character.id);
@@ -65,9 +66,16 @@ export default function PersonaPanel({ isOpen, onClose, onCharacterSelected }: P
     <>
       {/* Backdrop */}
       {isOpen && (
-        <div 
+        <button 
+          type="button"
           className="persona-backdrop" 
           onClick={onClose}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' || e.key === 'Enter') {
+              onClose();
+            }
+          }}
+          aria-label="Close panel"
         />
       )}
       
@@ -78,7 +86,7 @@ export default function PersonaPanel({ isOpen, onClose, onCharacterSelected }: P
             <span className="persona-header-icon">👥</span>
             Switch Persona
           </h3>
-          <button className="persona-panel-close" onClick={onClose}>
+          <button type="button" className="persona-panel-close" onClick={onClose}>
             ✕
           </button>
         </div>
@@ -86,16 +94,19 @@ export default function PersonaPanel({ isOpen, onClose, onCharacterSelected }: P
         <div className="persona-panel-content">
           <div className="persona-grid">
             {BUILT_IN_CHARACTERS.map(({ character, role, badge, badgeClass }) => (
-              <div
+              <button
+                type="button"
                 key={character.id}
                 className={`persona-card ${activeCharacter?.id === character.id ? 'active' : ''}`}
                 onClick={() => handleSelect(character)}
                 title={`Switch to ${character.name}`}
               >
                 <div className="persona-avatar">
-                  <img
-                    src={character.iconPath}
+                  <Image
+                    src={character.iconPath!}
                     alt={character.name}
+                    width={48}
+                    height={48}
                   />
                 </div>
                 <div className="persona-info">
@@ -103,7 +114,7 @@ export default function PersonaPanel({ isOpen, onClose, onCharacterSelected }: P
                   <span className="persona-role">{role}</span>
                 </div>
                 <span className={`persona-badge ${badgeClass}`}>{badge}</span>
-              </div>
+              </button>
             ))}
           </div>
 

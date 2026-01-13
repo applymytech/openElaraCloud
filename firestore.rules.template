@@ -2,9 +2,24 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function: Is user authenticated?
-    function isAuthenticated() {
-      return request.auth != null;
+    // ========================================
+    // SINGLE-USER SOVEREIGN DEPLOYMENT
+    // ========================================
+    // This is YOUR private deployment. Only YOU can access your data.
+    // 
+    // SETUP:
+    // 1. Create a Firebase project at https://console.firebase.google.com
+    // 2. Enable Authentication → Email/Password
+    // 3. Add yourself as a user in Authentication → Users
+    // 4. Copy this file to firestore.rules
+    // 5. Replace YOUR_EMAIL@EXAMPLE.COM with your Firebase Auth email
+    // 6. Deploy: firebase deploy --only firestore:rules
+    // ========================================
+    
+    // ⚠️ CHANGE THIS TO YOUR EMAIL ADDRESS
+    function isAuthorizedUser() {
+      return request.auth != null && 
+             request.auth.token.email == 'YOUR_EMAIL@EXAMPLE.COM';
     }
     
     // Helper function: Is this the user's own document?
@@ -12,90 +27,41 @@ service cloud.firestore {
       return request.auth.uid == userId;
     }
     
-    // Helper function: Check if trial is expired (7 days from account creation)
-    function isTrialExpired(userData) {
-      return userData.trialExpiresAt != null && 
-             request.time > userData.trialExpiresAt;
-    }
-    
     // ========================================
-    // USER PROFILES
+    // USER DATA
     // ========================================
     match /users/{userId} {
-      // Users can only read/write their own profile
-      // Block access if trial expired
-      allow read: if isAuthenticated() && isOwner(userId);
-      allow write: if isAuthenticated() && isOwner(userId) && 
-                     (!exists(/databases/$(database)/documents/users/$(userId)) || 
-                      !isTrialExpired(resource.data));
+      // Only YOU can access your data
+      allow read: if isAuthorizedUser() && isOwner(userId);
       
-      // User's chat history
-      match /chats/{chatId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
+      // Write with size validation
+      allow write: if isAuthorizedUser() && 
+                      isOwner(userId) &&
+                      request.resource.size() < 500000; // 500KB max per doc
+      
+      // All subcollections (chats, settings, images, videos, characters, etc.)
+      match /{subcollection}/{docId} {
+        allow read: if isAuthorizedUser() && isOwner(userId);
+        allow write: if isAuthorizedUser() && 
+                        isOwner(userId) &&
+                        request.resource.size() < 500000;
         
-        // Messages within a chat
-        match /messages/{messageId} {
-          allow read, write: if isAuthenticated() && isOwner(userId);
+        // Nested collections (messages within chats, etc.)
+        match /{nestedCollection}/{nestedDocId} {
+          allow read: if isAuthorizedUser() && isOwner(userId);
+          allow write: if isAuthorizedUser() && 
+                          isOwner(userId) &&
+                          request.resource.size() < 500000;
         }
-      }
-      
-      // User's settings
-      match /settings/{settingId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's generated images (kept 30 days after trial)
-      match /images/{imageId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's generated videos (kept 30 days after trial)
-      match /videos/{videoId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's file attachments (for chat context)
-      match /attachments/{attachmentId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's RAG documents (conversation history, knowledge files)
-      match /rag/{ragId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's temporary media storage (images, videos, audio)
-      match /media/{mediaId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's custom characters (kept 30 days after trial)
-      match /characters/{characterId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's personas (kept 30 days after trial)
-      match /personas/{personaId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // Usage tracking
-      match /usage/{usageId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
-      
-      // User's private data (signing keys, etc.)
-      match /private/{privateId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
       }
     }
     
     // ========================================
-    // PUBLIC DATA (read-only)
+    // PUBLIC DATA (read-only system data)
     // ========================================
     match /public/{document=**} {
-      allow read: if isAuthenticated();
-      allow write: if false; // Admin only via admin SDK
+      allow read: if isAuthorizedUser();
+      allow write: if false; // Admin SDK only
     }
     
     // ========================================

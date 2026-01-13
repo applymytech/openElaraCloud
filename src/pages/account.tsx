@@ -1,980 +1,1326 @@
 /**
  * Account Page - Consolidated Configuration Hub
- * 
+ *
  * Single account page matching desktop app structure.
  * Tabs: Profile | API Keys (BYOK) | Characters | Knowledge | About
  */
 
-import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged, signOut, User, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import {
+	EmailAuthProvider,
+	onAuthStateChanged,
+	reauthenticateWithCredential,
+	signOut,
+	type User,
+	updatePassword,
+} from "firebase/auth";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
-import dynamic from 'next/dynamic';
+import { useCallback, useEffect, useState } from "react";
+import type { CustomEndpoint } from "@/lib/byok"; // Only for type definition
+import { type Character, getActiveCharacter } from "@/lib/characters";
 import ELARA from "@/lib/elara";
-import { APP_VERSION, MANUAL_VERSION, LAST_UPDATED } from "@/lib/userManual";
-import { getAllAPIKeys, saveAPIKey, clearAllKeys, APIKeys, hasOwnKeys, hasTogetherKey, hasExaKey, type CustomEndpoint, getAllCustomEndpoints, saveCustomEndpoint, removeCustomEndpoint, getActiveEndpoint, setActiveEndpoint } from "@/lib/byok";
-import { getDefaultChatModel, setSelectedModel as saveModelSelection, CHAT_MODEL_METADATA } from "@/lib/models";
-import { getStorageStatus, formatBytes as formatStorageBytes, cutMedia, deleteMedia, type StorageStatus, type StoredMedia } from "@/lib/storage";
+import { auth, db, functions } from "@/lib/firebase";
+import {
+	type ChatModelMetadata,
+	getChatModels,
+	getDefaultChatModel,
+	type Model,
+	setSelectedModel as saveModelSelection,
+} from "@/lib/models";
 import { getMoodTracker } from "@/lib/mood";
-import { getActiveCharacter, type Character } from "@/lib/characters";
+import { getStorageStatus, type StorageStatus } from "@/lib/storage";
 
 // Dynamic imports to avoid SSR issues
-const CharacterEditor = dynamic(() => import('@/components/CharacterEditor'), { ssr: false });
-const KnowledgePanel = dynamic(() => import('@/components/KnowledgePanel'), { ssr: false });
-const CustomEndpointModal = dynamic(() => import('@/components/CustomEndpointModal'), { ssr: false });
+const CharacterEditor = dynamic(() => import("@/components/CharacterEditor"), { ssr: false });
+const KnowledgePanel = dynamic(() => import("@/components/KnowledgePanel"), { ssr: false });
+const _CustomEndpointModal = dynamic(() => import("@/components/CustomEndpointModal"), { ssr: false });
 
-type TabId = 'account' | 'apikeys' | 'characters' | 'knowledge' | 'about';
+type TabId = "account" | "apikeys" | "characters" | "knowledge" | "about";
 
 interface UserProfile {
-  email: string;
-  displayName: string;
-  photoURL: string | null;
-  createdAt: any;
-  lastLoginAt: any;
-  quota: {
-    storageLimitGB: number;
-    storageUsedBytes: number;
-  };
-  settings: {
-    theme: string;
-    defaultModel: string;
-  };
+	email: string;
+	displayName: string;
+	photoURL: string | null;
+	createdAt: any;
+	lastLoginAt: any;
+	quota: {
+		storageLimitGB: number;
+		storageUsedBytes: number;
+	};
+	settings: {
+		theme: string;
+		defaultModel: string;
+	};
 }
 
 export default function Account() {
-  const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabId>('account');
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  
-  // API Keys state
-  const [apiKeys, setApiKeys] = useState<APIKeys>({ together: '', openrouter: '', exa: '' });
-  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
-  const [keysSaved, setKeysSaved] = useState(false);
-  
-  // Custom Endpoints state
-  const [customEndpoints, setCustomEndpoints] = useState<CustomEndpoint[]>([]);
-  const [showEndpointModal, setShowEndpointModal] = useState(false);
-  const [editingEndpoint, setEditingEndpoint] = useState<CustomEndpoint | null>(null);
-  const [activeEndpointName, setActiveEndpointName] = useState<string | null>(null);
-  
-  // Settings state  
-  const [selectedModel, setSelectedModel] = useState('');
-  const [ctrlEnterSend, setCtrlEnterSend] = useState(true);
-  
-  // Character state
-  const [character, setCharacter] = useState<Character | null>(null);
-  const [showCharacterEditor, setShowCharacterEditor] = useState(false);
-  
-  // Storage state
-  const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
-  const [downloading, setDownloading] = useState<string | null>(null);
-  
-  // Password change state
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-  const [passwordSuccess, setPasswordSuccess] = useState('');
-  const [changingPassword, setChangingPassword] = useState(false);
-  
-  // Display name editing state
-  const [editingDisplayName, setEditingDisplayName] = useState(false);
-  const [newDisplayName, setNewDisplayName] = useState('');
-  const [savingDisplayName, setSavingDisplayName] = useState(false);
+	const router = useRouter();
+	const [user, setUser] = useState<User | null>(null);
+	const [loading, setLoading] = useState(true);
+	const [activeTab, setActiveTab] = useState<TabId>("account");
+	const [profile, setProfile] = useState<UserProfile | null>(null);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        router.push("/");
-        return;
-      }
-      setUser(user);
-      
-      // Load user profile
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        setProfile(userSnap.data() as UserProfile);
-      }
-      
-      // Load API keys (async)
-      const keys = await getAllAPIKeys();
-      setApiKeys(keys);
-      
-      // Load custom endpoints
-      setCustomEndpoints(getAllCustomEndpoints());
-      setActiveEndpointName(getActiveEndpoint());
-      
-      // Load settings
-      setSelectedModel(getDefaultChatModel());
-      if (typeof window !== 'undefined') {
-        const ctrlEnterPref = localStorage.getItem('openelara_ctrl_enter_send');
-        setCtrlEnterSend(ctrlEnterPref !== 'false');
-      }
-      
-      // Load character
-      setCharacter(getActiveCharacter());
-      
-      // Load storage status
-      try {
-        const status = await getStorageStatus();
-        setStorageStatus(status);
-      } catch (e) {
-        console.warn('Failed to load storage status:', e);
-      }
-      
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [router]);
+	// API Keys state (now using Secret Manager via Cloud Functions)
+	const [apiKeys, setApiKeys] = useState<Record<string, string>>({
+		together: "",
+		openrouter: "",
+		exa: "",
+		openai: "",
+		anthropic: "",
+		groq: "",
+	});
+	const [configuredKeys, setConfiguredKeys] = useState<Record<string, boolean>>({});
+	const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+	const [keysSaved, setKeysSaved] = useState(false);
+	const [savingKeys, setSavingKeys] = useState(false);
 
-  const handleSignOut = async () => {
-    await signOut(auth);
-    router.push("/");
-  };
+	// Custom Endpoints state
+	const [_customEndpoints, _setCustomEndpoints] = useState<CustomEndpoint[]>([]);
+	const [_showEndpointModal, setShowEndpointModal] = useState(false);
+	const [_editingEndpoint, setEditingEndpoint] = useState<CustomEndpoint | null>(null);
+	const [_activeEndpointName, _setActiveEndpointName] = useState<string | null>(null);
 
-  const handleSaveKeys = async () => {
-    // Save each key individually (async)
-    for (const [provider, key] of Object.entries(apiKeys)) {
-      await saveAPIKey(provider as keyof APIKeys, key || '');
-    }
-    setKeysSaved(true);
-    setTimeout(() => setKeysSaved(false), 3000);
-  };
+	// Settings state
+	const [selectedModel, setSelectedModel] = useState("");
+	const [ctrlEnterSend, setCtrlEnterSend] = useState(true);
 
-  const handleSaveEndpoint = (endpoint: CustomEndpoint) => {
-    saveCustomEndpoint(endpoint);
-    setCustomEndpoints(getAllCustomEndpoints());
-    setShowEndpointModal(false);
-    setEditingEndpoint(null);
-  };
+	// Character state
+	const [character, setCharacter] = useState<Character | null>(null);
+	const [showCharacterEditor, setShowCharacterEditor] = useState(false);
 
-  const handleEditEndpoint = (endpoint: CustomEndpoint) => {
-    setEditingEndpoint(endpoint);
-    setShowEndpointModal(true);
-  };
+	// Storage state
+	const [_storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
+	const [_downloading, _setDownloading] = useState<string | null>(null);
 
-  const handleDeleteEndpoint = (name: string) => {
-    if (confirm(`Are you sure you want to delete "${name}"?`)) {
-      removeCustomEndpoint(name);
-      setCustomEndpoints(getAllCustomEndpoints());
-    }
-  };
+	// Available models state (loaded dynamically from API)
+	const [availableModels, setAvailableModels] = useState<Model[]>([]);
+	const [loadingModels, setLoadingModels] = useState(false);
 
-  const handleSetActiveEndpoint = (name: string) => {
-    setActiveEndpoint(name);
-    setActiveEndpointName(name);
-  };
+	// Password change state
+	const [showPasswordModal, setShowPasswordModal] = useState(false);
+	const [currentPassword, setCurrentPassword] = useState("");
+	const [newPassword, setNewPassword] = useState("");
+	const [confirmPassword, setConfirmPassword] = useState("");
+	const [passwordError, setPasswordError] = useState("");
+	const [passwordSuccess, setPasswordSuccess] = useState("");
+	const [changingPassword, setChangingPassword] = useState(false);
 
-  const handleClearKeys = () => {
-    if (confirm('Are you sure you want to clear all API keys?')) {
-      clearAllKeys();
-      setApiKeys({ together: '', openrouter: '', exa: '' });
-    }
-  };
+	// Display name editing state
+	const [editingDisplayName, setEditingDisplayName] = useState(false);
+	const [newDisplayName, setNewDisplayName] = useState("");
+	const [savingDisplayName, setSavingDisplayName] = useState(false);
 
-  const toggleShowKey = (key: string) => {
-    setShowKeys(prev => ({ ...prev, [key]: !prev[key] }));
-  };
+	// Operating costs state
+	const [operatingCosts, setOperatingCosts] = useState<any>(null);
+	const [loadingCosts, setLoadingCosts] = useState(false);
+	const [costPeriod, setCostPeriod] = useState<"current_month" | "last_30_days" | "last_7_days">("current_month");
 
-  const handleModelChange = (model: string) => {
-    saveModelSelection('chat', model);
-    setSelectedModel(model);
-  };
+	// Define loadOperatingCosts with useCallback to satisfy exhaustive-deps
+	const loadOperatingCosts = useCallback(async () => {
+		setLoadingCosts(true);
+		try {
+			const getCosts = httpsCallable(functions, "getOperatingCosts");
+			const result = await getCosts({ period: costPeriod });
+			setOperatingCosts(result.data);
+		} catch (e) {
+			console.warn("Failed to load operating costs:", e);
+			setOperatingCosts({ error: "failed_to_load" });
+		} finally {
+			setLoadingCosts(false);
+		}
+	}, [costPeriod]);
 
-  const handleCtrlEnterToggle = () => {
-    const newValue = !ctrlEnterSend;
-    setCtrlEnterSend(newValue);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('openelara_ctrl_enter_send', String(newValue));
-    }
-  };
+	useEffect(() => {
+		const unsubscribe = onAuthStateChanged(auth, async (user) => {
+			if (!user) {
+				router.push("/");
+				return;
+			}
+			setUser(user);
 
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPasswordError('');
-    setPasswordSuccess('');
-    
-    if (newPassword !== confirmPassword) {
-      setPasswordError('New passwords do not match');
-      return;
-    }
-    
-    if (newPassword.length < 6) {
-      setPasswordError('Password must be at least 6 characters');
-      return;
-    }
-    
-    if (!user?.email) {
-      setPasswordError('No email found for current user');
-      return;
-    }
-    
-    setChangingPassword(true);
-    
-    try {
-      // Re-authenticate first
-      const credential = EmailAuthProvider.credential(user.email, currentPassword);
-      await reauthenticateWithCredential(user, credential);
-      
-      // Change password
-      await updatePassword(user, newPassword);
-      
-      setPasswordSuccess('Password changed successfully!');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      
-      // Close modal after 1.5 seconds to show success message
-      setTimeout(() => {
-        setShowPasswordModal(false);
-        setPasswordSuccess('');
-      }, 1500);
-    } catch (error: any) {
-      if (error.code === 'auth/wrong-password') {
-        setPasswordError('Current password is incorrect');
-      } else {
-        setPasswordError(error.message);
-      }
-    } finally {
-      setChangingPassword(false);
-    }
-  };
+			// Load user profile
+			const userRef = doc(db, "users", user.uid);
+			const userSnap = await getDoc(userRef);
+			if (userSnap.exists()) {
+				setProfile(userSnap.data() as UserProfile);
+			}
 
-  const handleSaveDisplayName = async () => {
-    if (!user || !newDisplayName.trim()) return;
-    
-    setSavingDisplayName(true);
-    try {
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        displayName: newDisplayName.trim()
-      });
-      
-      // Update local state
-      setProfile(prev => prev ? { ...prev, displayName: newDisplayName.trim() } : null);
-      setEditingDisplayName(false);
-      setNewDisplayName('');
-    } catch (error) {
-      console.error('Failed to update display name:', error);
-      alert('Failed to save display name. Please try again.');
-    } finally {
-      setSavingDisplayName(false);
-    }
-  };
+			// Load API keys (from Secret Manager)
+			const listKeys = httpsCallable(functions, "listAPIKeys");
+			try {
+				const result = await listKeys();
+				const data = result.data as { configured: Record<string, boolean> };
+				setConfiguredKeys(data.configured || {});
+			} catch (e) {
+				console.warn("Failed to load API keys:", e);
+			}
 
-  const launchChat = () => {
-    router.push('/chat');
-  };
+			// Load custom endpoints (still localStorage for now - not critical security)
+			// TODO: Consider moving to Firestore if needed
+			// setCustomEndpoints(getAllCustomEndpoints());
+			// setActiveEndpointName(getActiveEndpoint());
 
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+			// Load settings - getDefaultChatModel is now async
+			const defaultModel = await getDefaultChatModel();
+			setSelectedModel(defaultModel || "");
 
-  const getStoragePercentage = (): number => {
-    if (!profile) return 0;
-    const limitBytes = profile.quota.storageLimitGB * 1024 * 1024 * 1024;
-    return Math.round((profile.quota.storageUsedBytes / limitBytes) * 100);
-  };
+			// Load available chat models dynamically from API
+			setLoadingModels(true);
+			try {
+				const models = await getChatModels();
+				setAvailableModels(models);
+			} catch (e) {
+				console.warn("Failed to load chat models:", e);
+			}
+			setLoadingModels(false);
 
-  if (loading) {
-    return (
-      <div className="account-page center-content">
-        <div className="elara-logo">
-          <img src="/icon.png" alt="OpenElara" className="elara-logo-icon-img" />
-        </div>
-        <div className="nexus-spinner" />
-      </div>
-    );
-  }
+			if (typeof window !== "undefined") {
+				const ctrlEnterPref = localStorage.getItem("openelara_ctrl_enter_send");
+				setCtrlEnterSend(ctrlEnterPref !== "false");
+			}
 
-  return (
-    <div className="account-page">
-      {/* Stars Background */}
-      <div className="stars-bg" />
-      
-      {/* Header */}
-      <header className="account-header">
-        <div className="account-header-brand">
-          <img src="/icon.png" alt="OpenElara" className="account-logo" />
-          <div className="account-title-group">
-            <h1 className="account-title">{ELARA.NAME}</h1>
-            <span className="account-subtitle">Configuration Hub</span>
-          </div>
-        </div>
-        <div className="account-header-actions">
-          <button onClick={handleSignOut} className="nexus-btn nexus-btn-ghost">
-            Sign Out
-          </button>
-        </div>
-      </header>
+			// Load character
+			setCharacter(getActiveCharacter());
 
-      {/* Main Content */}
-      <main className="account-main">
-        <div className="account-container">
-          {/* Tab Navigation */}
-          <nav className="account-tabs">
-            <button 
-              className={`account-tab ${activeTab === 'account' ? 'active' : ''}`}
-              onClick={() => setActiveTab('account')}
-            >
-              👤 Account
-            </button>
-            <button 
-              className={`account-tab ${activeTab === 'apikeys' ? 'active' : ''}`}
-              onClick={() => setActiveTab('apikeys')}
-            >
-              🔑 API Keys
-            </button>
-            <button 
-              className={`account-tab ${activeTab === 'characters' ? 'active' : ''}`}
-              onClick={() => setActiveTab('characters')}
-            >
-              🎭 Characters
-            </button>
-            <button 
-              className={`account-tab ${activeTab === 'knowledge' ? 'active' : ''}`}
-              onClick={() => setActiveTab('knowledge')}
-            >
-              📚 Knowledge
-            </button>
-            <button 
-              className={`account-tab ${activeTab === 'about' ? 'active' : ''}`}
-              onClick={() => setActiveTab('about')}
-            >
-              ℹ️ About
-            </button>
-          </nav>
+			// Load storage status
+			try {
+				const status = await getStorageStatus();
+				setStorageStatus(status);
+			} catch (e) {
+				console.warn("Failed to load storage status:", e);
+			}
 
-          {/* Tab Content */}
-          <div className="account-content">
-            {/* Account Tab */}
-            {activeTab === 'account' && (
-              <div className="tab-panel">
-                <div className="welcome-banner">
-                  <h2>Welcome back, {profile?.displayName || user?.email?.split('@')[0]}!</h2>
-                  <p>Your sovereign AI is ready to assist.</p>
-                </div>
+			// Load operating costs
+			loadOperatingCosts();
 
-                <div className="account-grid">
-                  {/* Profile Card */}
-                  <div className="account-card">
-                    <h3>👤 Profile</h3>
-                    <div className="profile-info">
-                      <div className="profile-row">
-                        <span className="profile-label">Email</span>
-                        <span className="profile-value">{user?.email}</span>
-                      </div>
-                      <div className="profile-row">
-                        <span className="profile-label">Display Name</span>
-                        {editingDisplayName ? (
-                          <div className="display-name-edit">
-                            <input
-                              type="text"
-                              className="nexus-input display-name-input"
-                              value={newDisplayName}
-                              onChange={(e) => setNewDisplayName(e.target.value)}
-                              placeholder={profile?.displayName || 'Enter your name'}
-                              autoFocus
-                            />
-                            <div className="display-name-actions">
-                              <button 
-                                className="nexus-btn nexus-btn-sm nexus-btn-primary"
-                                onClick={handleSaveDisplayName}
-                                disabled={savingDisplayName || !newDisplayName.trim()}
-                              >
-                                {savingDisplayName ? '...' : '✓'}
-                              </button>
-                              <button 
-                                className="nexus-btn nexus-btn-sm nexus-btn-secondary"
-                                onClick={() => { setEditingDisplayName(false); setNewDisplayName(''); }}
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="profile-value editable" onClick={() => { setEditingDisplayName(true); setNewDisplayName(profile?.displayName || ''); }}>
-                            {profile?.displayName || 'Click to set'}
-                            <span className="edit-hint">✏️</span>
-                          </span>
-                        )}
-                      </div>
-                      <div className="profile-row">
-                        <span className="profile-label">Member Since</span>
-                        <span className="profile-value">
-                          {profile?.createdAt?.toDate?.()?.toLocaleDateString() || 'N/A'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+			setLoading(false);
+		});
+		return () => unsubscribe();
+	}, [router, loadOperatingCosts]);
 
-                  {/* Storage Card */}
-                  <div className="account-card">
-                    <h3>💾 Storage</h3>
-                    <div className="storage-info">
-                      <div className="storage-stats">
-                        <span className="storage-used">{formatBytes(profile?.quota.storageUsedBytes || 0)}</span>
-                        <span className="storage-separator"> / </span>
-                        <span className="storage-limit">{profile?.quota.storageLimitGB || 2} GB</span>
-                      </div>
-                      <div className="progress-bar">
-                        <div 
-                          className="progress-bar-fill" 
-                          style={{ width: `${getStoragePercentage()}%` }}
-                        />
-                      </div>
-                      <p className="storage-note">
-                        {getStoragePercentage() < 80 
-                          ? "You're doing great on storage!" 
-                          : "Consider cleaning up old files."}
-                      </p>
-                    </div>
-                  </div>
+	useEffect(() => {
+		if (user && activeTab === "account") {
+			loadOperatingCosts();
+		}
+	}, [user, activeTab, loadOperatingCosts]);
 
-                  {/* API Status Card */}
-                  <div className="account-card status-card">
-                    <h3>🔌 API Status</h3>
-                    <div className="api-status-grid">
-                      <div className={`api-status-item ${hasTogetherKey() ? 'connected' : ''}`}>
-                        <span className="status-dot" />
-                        <span>Together AI</span>
-                      </div>
-                      <div className={`api-status-item ${apiKeys.openrouter ? 'connected' : ''}`}>
-                        <span className="status-dot" />
-                        <span>OpenRouter</span>
-                      </div>
-                      <div className={`api-status-item ${hasExaKey() ? 'connected' : ''}`}>
-                        <span className="status-dot" />
-                        <span>Exa.ai</span>
-                      </div>
-                    </div>
-                    {!hasOwnKeys() && (
-                      <p className="api-warning">⚠️ Add API keys in the API Keys tab for full BYOK access.</p>
-                    )}
-                  </div>
+	const handleSignOut = async () => {
+		await signOut(auth);
+		router.push("/");
+	};
 
-                  {/* Password Change Button */}
-                  <div className="account-card">
-                    <h3>🔐 Password & Security</h3>
-                    <p className="card-description">Manage your account password</p>
-                    <button 
-                      className="nexus-btn nexus-btn-secondary"
-                      onClick={() => setShowPasswordModal(true)}
-                    >
-                      Change Password
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+	const handleSaveKeys = async () => {
+		setSavingKeys(true);
+		try {
+			// Save to Secret Manager via Cloud Functions
+			const updateKey = httpsCallable(functions, "updateAPIKey");
 
-            {/* API Keys Tab */}
-            {activeTab === 'apikeys' && (
-              <div className="tab-panel">
-                <div className="byok-header">
-                  <h2>🔑 Bring Your Own Keys (BYOK)</h2>
-                  <p>Enter your API keys for direct access to AI providers. Keys are stored locally in your browser.</p>
-                  
-                  {/* Security Warning */}
-                  <div className="security-warning">
-                    <div className="warning-header">
-                      <span className="warning-icon">🔓</span>
-                      <h4>Security Notice</h4>
-                    </div>
-                    <ul>
-                      <li><strong>Keys are NOT encrypted</strong> - stored in browser localStorage as plain text</li>
-                      <li><strong>Same-Origin Policy protection</strong> - only accessible by this domain</li>
-                      <li><strong>Vulnerable to XSS</strong> - malicious scripts could potentially access keys</li>
-                      <li><strong>Browser extensions</strong> - some extensions can read localStorage</li>
-                      <li><strong>Never share keys</strong> - treat them like passwords, rotate regularly</li>
-                    </ul>
-                    <p className="warning-footer">
-                      💡 <strong>Tip:</strong> Use limited-scope API keys with spending limits when possible. 
-                      If your provider supports key restrictions, enable them.
-                    </p>
-                  </div>
-                </div>
+			for (const [provider, key] of Object.entries(apiKeys)) {
+				if (key?.trim()) {
+					await updateKey({ provider, key: key.trim() });
+				}
+			}
 
-                {keysSaved && (
-                  <div className="form-success">✓ API keys saved successfully!</div>
-                )}
+			// Reload configured keys status
+			const listKeys = httpsCallable(functions, "listAPIKeys");
+			const result = await listKeys();
+			const data = result.data as { configured: Record<string, boolean> };
+			setConfiguredKeys(data.configured || {});
 
-                <div className="api-keys-grid">
-                  {/* Together AI */}
-                  <div className="api-key-card">
-                    <div className="api-key-header">
-                      <span className="provider-icon">🚀</span>
-                      <div>
-                        <h4>Together AI</h4>
-                        <small>Primary - Chat, Images, Video, TTS, STT</small>
-                      </div>
-                    </div>
-                    <div className="form-group">
-                      <div className="input-with-toggle">
-                        <input
-                          type={showKeys.together ? 'text' : 'password'}
-                          className="nexus-input"
-                          value={apiKeys.together}
-                          onChange={(e) => setApiKeys(prev => ({ ...prev, together: e.target.value }))}
-                          placeholder="Enter Together AI API key"
-                        />
-                        <button 
-                          type="button"
-                          className="toggle-visibility"
-                          onClick={() => toggleShowKey('together')}
-                        >
-                          {showKeys.together ? '🙈' : '👁️'}
-                        </button>
-                      </div>
-                    </div>
-                    <details className="api-instructions">
-                      <summary>How to get your key</summary>
-                      <ol>
-                        <li>Go to <strong>together.ai</strong></li>
-                        <li>Create an account or sign in</li>
-                        <li>Go to Settings → API Keys</li>
-                        <li>Create and copy your key</li>
-                      </ol>
-                    </details>
-                  </div>
+			setKeysSaved(true);
+			setTimeout(() => setKeysSaved(false), 3000);
 
-                  {/* OpenRouter */}
-                  <div className="api-key-card">
-                    <div className="api-key-header">
-                      <span className="provider-icon">🌐</span>
-                      <div>
-                        <h4>OpenRouter</h4>
-                        <small>300+ models including 50+ free • Access Claude, GPT-4, Gemini via routing</small>
-                      </div>
-                    </div>
-                    <div className="form-group">
-                      <div className="input-with-toggle">
-                        <input
-                          type={showKeys.openrouter ? 'text' : 'password'}
-                          className="nexus-input"
-                          value={apiKeys.openrouter}
-                          onChange={(e) => setApiKeys(prev => ({ ...prev, openrouter: e.target.value }))}
-                          placeholder="Enter OpenRouter API key"
-                        />
-                        <button 
-                          type="button"
-                          className="toggle-visibility"
-                          onClick={() => toggleShowKey('openrouter')}
-                        >
-                          {showKeys.openrouter ? '🙈' : '👁️'}
-                        </button>
-                      </div>
-                    </div>
-                    <details className="api-instructions">
-                      <summary>How to get your key</summary>
-                      <ol>
-                        <li>Go to <strong>openrouter.ai</strong></li>
-                        <li>Sign in with Google, Discord, or email</li>
-                        <li>Click your name → Keys → Create Key</li>
-                        <li>Copy and paste above</li>
-                      </ol>
-                      <p className="tip-note">💡 50+ free models available including DeepSeek, Llama, Mistral!</p>
-                    </details>
-                  </div>
+			// Clear input fields after save
+			setApiKeys({
+				together: "",
+				openrouter: "",
+				exa: "",
+				openai: "",
+				anthropic: "",
+				groq: "",
+			});
+		} catch (error) {
+			console.error("Failed to save API keys:", error);
+			alert("Failed to save API keys. Please try again.");
+		} finally {
+			setSavingKeys(false);
+		}
+	};
 
-                  {/* Exa.ai */}
-                  <div className="api-key-card">
-                    <div className="api-key-header">
-                      <span className="provider-icon">🔍</span>
-                      <div>
-                        <h4>Exa.ai</h4>
-                        <small>Power Knowledge - Web Search & Research</small>
-                      </div>
-                    </div>
-                    <div className="form-group">
-                      <div className="input-with-toggle">
-                        <input
-                          type={showKeys.exa ? 'text' : 'password'}
-                          className="nexus-input"
-                          value={apiKeys.exa}
-                          onChange={(e) => setApiKeys(prev => ({ ...prev, exa: e.target.value }))}
-                          placeholder="Enter Exa.ai API key"
-                        />
-                        <button 
-                          type="button"
-                          className="toggle-visibility"
-                          onClick={() => toggleShowKey('exa')}
-                        >
-                          {showKeys.exa ? '🙈' : '👁️'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+	const handleDeleteKey = async (provider: string) => {
+		if (!confirm(`Delete ${provider} API key from Secret Manager?`)) {
+			return;
+		}
 
-                {/* Custom Endpoints (BYOEndpoint) */}
-                <div className="custom-endpoints-section">
-                  <div className="section-header">
-                    <h3>🌐 Custom Endpoints (BYOEndpoint)</h3>
-                    <button 
-                      onClick={() => { setEditingEndpoint(null); setShowEndpointModal(true); }}
-                      className="nexus-btn nexus-btn-secondary nexus-btn-sm"
-                    >
-                      + Add Endpoint
-                    </button>
-                  </div>
-                  
-                  <p className="section-description">
-                    Connect to any OpenAI-compatible REST API endpoint. <strong>No guarantees.</strong> If your endpoint doesn't follow OpenAI standards, it won't work. Chat only - no image/video.
-                  </p>
+		try {
+			const deleteKey = httpsCallable(functions, "deleteAPIKey");
+			await deleteKey({ provider });
 
-                  {customEndpoints.length === 0 ? (
-                    <div className="empty-state">
-                      <p>🔌 No custom endpoints configured yet.</p>
-                      <p className="empty-hint">Click "Add Endpoint" to connect to any OpenAI-compatible API. You're on your own - compatibility not guaranteed.</p>
-                    </div>
-                  ) : (
-                    <div className="endpoints-grid">
-                      {customEndpoints.map(endpoint => (
-                        <div 
-                          key={endpoint.name} 
-                          className={`endpoint-card ${activeEndpointName === endpoint.name ? 'active' : ''} ${endpoint.enabled === false ? 'disabled' : ''}`}
-                        >
-                          <div className="endpoint-header">
-                            <h4>{endpoint.name}</h4>
-                            <div className="endpoint-actions">
-                              <button
-                                onClick={() => handleSetActiveEndpoint(endpoint.name)}
-                                className="endpoint-action-btn"
-                                title="Set as active"
-                                disabled={endpoint.enabled === false}
-                              >
-                                {activeEndpointName === endpoint.name ? '✓' : '○'}
-                              </button>
-                              <button
-                                onClick={() => handleEditEndpoint(endpoint)}
-                                className="endpoint-action-btn"
-                                title="Edit"
-                              >
-                                ✏️
-                              </button>
-                              <button
-                                onClick={() => handleDeleteEndpoint(endpoint.name)}
-                                className="endpoint-action-btn endpoint-delete"
-                                title="Delete"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </div>
-                          <div className="endpoint-details">
-                            <div className="endpoint-detail">
-                              <span className="detail-label">URL:</span>
-                              <span className="detail-value">{endpoint.chatEndpoint || endpoint.baseUrl || 'Not set'}</span>
-                            </div>
-                            {endpoint.apiKey && (
-                              <div className="endpoint-detail">
-                                <span className="detail-label">API Key:</span>
-                                <span className="detail-value">••••••••</span>
-                              </div>
-                            )}
-                            {endpoint.customPayload && (
-                              <div className="endpoint-detail">
-                                <span className="detail-label">Custom Fields:</span>
-                                <span className="detail-value">Yes</span>
-                              </div>
-                            )}
-                            {endpoint.overridePayload && (
-                              <div className="endpoint-detail">
-                                <span className="detail-label">Mode:</span>
-                                <span className="detail-value badge-advanced">Advanced Template</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+			// Reload configured keys status
+			const listKeys = httpsCallable(functions, "listAPIKeys");
+			const result = await listKeys();
+			const data = result.data as { configured: Record<string, boolean> };
+			setConfiguredKeys(data.configured || {});
 
-                <div className="api-keys-actions">
-                  <button onClick={handleSaveKeys} className="nexus-btn nexus-btn-primary">
-                    💾 Save All Keys
-                  </button>
-                  <button onClick={handleClearKeys} className="nexus-btn nexus-btn-danger">
-                    🗑️ Clear All Keys
-                  </button>
-                </div>
+			alert(`${provider} API key deleted successfully`);
+		} catch (error) {
+			console.error("Failed to delete API key:", error);
+			alert("Failed to delete API key. Please try again.");
+		}
+	};
 
-                <div className="byok-info">
-                  <p>🔒 <strong>Security:</strong> Keys are stored locally in your browser's localStorage. They never leave your device except when making API calls directly to the providers.</p>
-                </div>
-              </div>
-            )}
-            
-            {/* Custom Endpoint Modal */}
-            {showEndpointModal && (
-              <CustomEndpointModal
-                isOpen={showEndpointModal}
-                onClose={() => { setShowEndpointModal(false); setEditingEndpoint(null); }}
-                onSave={handleSaveEndpoint}
-                editEndpoint={editingEndpoint}
-              />
-            )}
+	const _handleSaveEndpoint = (_endpoint: CustomEndpoint) => {
+		// Custom endpoints - temporarily disabled until moved to Firestore
+		alert("Custom endpoints are temporarily disabled during Secret Manager migration");
+		setShowEndpointModal(false);
+		setEditingEndpoint(null);
+		// saveCustomEndpoint(endpoint);
+		// setCustomEndpoints(getAllCustomEndpoints());
+	};
 
-            {/* Characters Tab */}
-            {activeTab === 'characters' && (
-              <div className="tab-panel">
-                {showCharacterEditor ? (
-                  <CharacterEditor 
-                    onClose={() => setShowCharacterEditor(false)}
-                    onCharacterSelected={(char) => {
-                      setCharacter(char);
-                      setShowCharacterEditor(false);
-                    }}
-                  />
-                ) : (
-                  <>
-                    <div className="account-card">
-                      <div className="card-header-row">
-                        <h3>🎭 Active Character</h3>
-                        <button 
-                          onClick={() => setShowCharacterEditor(true)}
-                          className="nexus-btn nexus-btn-secondary nexus-btn-sm"
-                        >
-                          Switch / Create
-                        </button>
-                      </div>
-                      
-                      {character && (
-                        <div className="character-display">
-                          {character.iconPath ? (
-                            <img 
-                              src={character.iconPath} 
-                              alt={character.name}
-                              className="character-avatar-img"
-                            />
-                          ) : (
-                            <div className="character-avatar-placeholder" />
-                          )}
-                          <div className="character-info">
-                            <h4>{character.name} {character.isBuiltIn && <span className="badge-builtin">Built-in</span>}</h4>
-                            <p className="character-description">{character.descriptionSafe.slice(0, 150)}...</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+	const _handleEditEndpoint = (endpoint: CustomEndpoint) => {
+		setEditingEndpoint(endpoint);
+		setShowEndpointModal(true);
+	};
 
-                    <div className="account-card">
-                      <h3>💜 Emotional State</h3>
-                      
-                      <div className="info-box">
-                        <p>
-                          {character?.name || 'Elara'} has an emotional system that responds to how you treat her. 
-                          Praise improves mood, criticism decreases it. This affects her communication style naturally.
-                        </p>
-                      </div>
-                      
-                      {character && (() => {
-                        const tracker = getMoodTracker();
-                        const stats = tracker.getStats();
-                        return (
-                          <div className="mood-display">
-                            <div className="mood-meter">
-                              <div className="mood-bar-bg">
-                                <div className="mood-bar-fill" style={{ width: `${stats.current}%` }} />
-                              </div>
-                              <div className="mood-labels">
-                                <span>😢 0</span>
-                                <span className="mood-current">{stats.current}</span>
-                                <span>100 😊</span>
-                              </div>
-                            </div>
-                            <div className="mood-stats">
-                              <div className="mood-stat">
-                                <span className="stat-label">Current</span>
-                                <span className="stat-value">{stats.description}</span>
-                              </div>
-                              <div className="mood-stat">
-                                <span className="stat-label">Baseline</span>
-                                <span className="stat-value">{stats.baseline}/100</span>
-                              </div>
-                              <div className="mood-stat">
-                                <span className="stat-label">Trend</span>
-                                <span className="stat-value">{stats.trend}</span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
+	const _handleDeleteEndpoint = (_name: string) => {
+		alert("Custom endpoints are temporarily disabled during Secret Manager migration");
+		// if (confirm(`Are you sure you want to delete "${name}"?`)) {
+		// 	removeCustomEndpoint(name);
+		// 	setCustomEndpoints(getAllCustomEndpoints());
+		// }
+	};
 
-                    {/* Model Selection */}
-                    <div className="account-card">
-                      <h3>🤖 Default Chat Model</h3>
-                      <p className="card-description">Choose your preferred AI model for conversations.</p>
-                      <select 
-                        className="nexus-input model-select"
-                        value={selectedModel}
-                        onChange={(e) => handleModelChange(e.target.value)}
-                      >
-                        {Object.entries(CHAT_MODEL_METADATA).map(([modelId, meta]) => (
-                          <option key={modelId} value={modelId}>
-                            {meta?.displayName || modelId} {meta?.free ? '(Free)' : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+	const _handleSetActiveEndpoint = (_name: string) => {
+		alert("Custom endpoints are temporarily disabled during Secret Manager migration");
+		// setActiveEndpoint(name);
+		// setActiveEndpointName(name);
+	};
 
-            {/* Knowledge Tab */}
-            {activeTab === 'knowledge' && (
-              <div className="tab-panel">
-                <KnowledgePanel />
-              </div>
-            )}
+	const _handleClearKeys = () => {
+		alert("To clear keys, delete them individually using the trash icon next to each provider");
+	};
 
-            {/* About Tab */}
-            {activeTab === 'about' && (
-              <div className="tab-panel">
-                <div className="about-content">
-                  <div className="about-header">
-                    <img src="/icon.png" alt="OpenElara" className="about-logo" />
-                    <div>
-                      <h2 className="about-title">{ELARA.NAME}</h2>
-                      <p className="about-version">Cloud Edition • v1.0.0</p>
-                    </div>
-                  </div>
+	const toggleShowKey = (key: string) => {
+		setShowKeys((prev) => ({ ...prev, [key]: !prev[key] }));
+	};
 
-                  <div className="about-description">
-                    <p>{ELARA.NAME} is your sovereign AI assistant - a BYOK (Bring Your Own Key) platform that puts you in control of your AI interactions.</p>
-                  </div>
+	const handleModelChange = (model: string) => {
+		saveModelSelection("chat", model);
+		setSelectedModel(model);
+	};
 
-                  <div className="about-features">
-                    <h3>✨ Features</h3>
-                    <ul>
-                      <li>💬 Multi-model chat with thinking tags</li>
-                      <li>🖼️ AI image generation (FLUX, Stable Diffusion)</li>
-                      <li>🎬 AI video generation</li>
-                      <li>🎤 Speech-to-text voice input</li>
-                      <li>🔊 Text-to-speech output</li>
-                      <li>📎 File attachments for context</li>
-                      <li>🔍 Power Knowledge (Exa.ai search)</li>
-                      <li>📂 File format conversion</li>
-                      <li>🎭 Character personas</li>
-                      <li>📝 Prompt templates</li>
-                      <li>🧠 Knowledge base with RAG</li>
-                    </ul>
-                  </div>
+	const _handleCtrlEnterToggle = () => {
+		const newValue = !ctrlEnterSend;
+		setCtrlEnterSend(newValue);
+		if (typeof window !== "undefined") {
+			localStorage.setItem("openelara_ctrl_enter_send", String(newValue));
+		}
+	};
 
-                  <div className="about-links">
-                    <h3>🔗 Links</h3>
-                    <div className="link-grid">
-                      <a href="/PRIVACY.md" target="_blank" className="about-link">
-                        🔒 Privacy Policy
-                      </a>
-                      <a href="/TERMS.md" target="_blank" className="about-link">
-                        📜 Terms of Service
-                      </a>
-                      <a href="https://github.com/applymytech/openElaraCloud" target="_blank" rel="noopener" className="about-link">
-                        💻 GitHub
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+	const handlePasswordChange = async (e: React.FormEvent) => {
+		e.preventDefault();
+		setPasswordError("");
+		setPasswordSuccess("");
 
-          {/* Launch Bar */}
-          <div className="launch-bar">
-            <span>Ready to chat?</span>
-            <button onClick={launchChat} className="nexus-btn nexus-btn-primary launch-btn">
-              🚀 Launch {ELARA.NAME}
-            </button>
-          </div>
-        </div>
+		if (newPassword !== confirmPassword) {
+			setPasswordError("New passwords do not match");
+			return;
+		}
 
-        {/* Password Change Modal */}
-        {showPasswordModal && (
-          <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2>🔐 Change Password</h2>
-                <button className="modal-close" onClick={() => setShowPasswordModal(false)}>✕</button>
-              </div>
-              
-              <form onSubmit={handlePasswordChange} className="modal-form">
-                {passwordError && <div className="form-error">⚠️ {passwordError}</div>}
-                {passwordSuccess && <div className="form-success">✓ {passwordSuccess}</div>}
-                
-                <div className="form-group">
-                  <label className="nexus-label">Current Password</label>
-                  <input
-                    type="password"
-                    className="nexus-input"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                    autoFocus
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label className="nexus-label">New Password</label>
-                  <input
-                    type="password"
-                    className="nexus-input"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label className="nexus-label">Confirm New Password</label>
-                  <input
-                    type="password"
-                    className="nexus-input"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                  />
-                </div>
-                
-                <div className="modal-actions">
-                  <button 
-                    type="button"
-                    className="nexus-btn nexus-btn-secondary"
-                    onClick={() => setShowPasswordModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="nexus-btn nexus-btn-primary"
-                    disabled={changingPassword}
-                  >
-                    {changingPassword ? 'Changing...' : 'Change Password'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </main>
+		if (newPassword.length < 6) {
+			setPasswordError("Password must be at least 6 characters");
+			return;
+		}
 
-      <style jsx>{`
+		if (!user?.email) {
+			setPasswordError("No email found for current user");
+			return;
+		}
+
+		setChangingPassword(true);
+
+		try {
+			// Re-authenticate first
+			const credential = EmailAuthProvider.credential(user.email, currentPassword);
+			await reauthenticateWithCredential(user, credential);
+
+			// Change password
+			await updatePassword(user, newPassword);
+
+			setPasswordSuccess("Password changed successfully!");
+			setCurrentPassword("");
+			setNewPassword("");
+			setConfirmPassword("");
+
+			// Close modal after 1.5 seconds to show success message
+			setTimeout(() => {
+				setShowPasswordModal(false);
+				setPasswordSuccess("");
+			}, 1500);
+		} catch (error: any) {
+			if (error.code === "auth/wrong-password") {
+				setPasswordError("Current password is incorrect");
+			} else {
+				setPasswordError(error.message);
+			}
+		} finally {
+			setChangingPassword(false);
+		}
+	};
+
+	const handleSaveDisplayName = async () => {
+		if (!user || !newDisplayName.trim()) {
+			return;
+		}
+
+		setSavingDisplayName(true);
+		try {
+			const userRef = doc(db, "users", user.uid);
+			await updateDoc(userRef, {
+				displayName: newDisplayName.trim(),
+			});
+
+			// Update local state
+			setProfile((prev) => (prev ? { ...prev, displayName: newDisplayName.trim() } : null));
+			setEditingDisplayName(false);
+			setNewDisplayName("");
+		} catch (error) {
+			console.error("Failed to update display name:", error);
+			alert("Failed to save display name. Please try again.");
+		} finally {
+			setSavingDisplayName(false);
+		}
+	};
+
+	const launchChat = () => {
+		router.push("/chat");
+	};
+
+	const formatBytes = (bytes: number): string => {
+		if (bytes === 0) {
+			return "0 B";
+		}
+		const k = 1024;
+		const sizes = ["B", "KB", "MB", "GB"];
+		const i = Math.floor(Math.log(bytes) / Math.log(k));
+		return `${parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
+	};
+
+	const getStoragePercentage = (): number => {
+		if (!profile) {
+			return 0;
+		}
+		const limitBytes = profile.quota.storageLimitGB * 1024 * 1024 * 1024;
+		return Math.round((profile.quota.storageUsedBytes / limitBytes) * 100);
+	};
+
+	if (loading) {
+		return (
+			<div className="account-page center-content">
+				<div className="elara-logo">
+					<img src="/icon.png" alt="OpenElara" className="elara-logo-icon-img" />
+				</div>
+				<div className="nexus-spinner" />
+			</div>
+		);
+	}
+
+	return (
+		<div className="account-page">
+			{/* Stars Background */}
+			<div className="stars-bg" />
+
+			{/* Header */}
+			<header className="account-header">
+				<div className="account-header-brand">
+					<img src="/icon.png" alt="OpenElara" className="account-logo" />
+					<div className="account-title-group">
+						<h1 className="account-title">{ELARA.NAME}</h1>
+						<span className="account-subtitle">Configuration Hub</span>
+					</div>
+				</div>
+				<div className="account-header-actions">
+					<button type="button" onClick={handleSignOut} className="nexus-btn nexus-btn-ghost">
+						Sign Out
+					</button>
+				</div>
+			</header>
+
+			{/* Main Content */}
+			<main className="account-main">
+				<div className="account-container">
+					{/* Tab Navigation */}
+					<nav className="account-tabs">
+						<button type="button" className={`account-tab ${activeTab === "account" ? "active" : ""}`}
+							onClick={() => setActiveTab("account")}
+						>
+							👤 Account
+						</button>
+						<button type="button" className={`account-tab ${activeTab === "apikeys" ? "active" : ""}`}
+							onClick={() => setActiveTab("apikeys")}
+						>
+							🔑 API Keys
+						</button>
+						<button type="button" className={`account-tab ${activeTab === "characters" ? "active" : ""}`}
+							onClick={() => setActiveTab("characters")}
+						>
+							🎭 Characters
+						</button>
+						<button type="button" className={`account-tab ${activeTab === "knowledge" ? "active" : ""}`}
+							onClick={() => setActiveTab("knowledge")}
+						>
+							📚 Knowledge
+						</button>
+						<button type="button" className={`account-tab ${activeTab === "about" ? "active" : ""}`}
+							onClick={() => setActiveTab("about")}
+						>
+							ℹ️ About
+						</button>
+					</nav>
+
+					{/* Tab Content */}
+					<div className="account-content">
+						{/* Account Tab */}
+						{activeTab === "account" && (
+							<div className="tab-panel">
+								<div className="welcome-banner">
+									<h2>Welcome back, {profile?.displayName || user?.email?.split("@")[0]}!</h2>
+									<p>Your sovereign AI is ready to assist.</p>
+									<div className="welcome-stats">
+										<div className="stat-item">
+											<span className="stat-icon">🤖</span>
+											<span className="stat-label">Vertex AI Native</span>
+										</div>
+										<div className="stat-item">
+											<span className="stat-icon">🔐</span>
+											<span className="stat-label">100% Your Control</span>
+										</div>
+										<div className="stat-item">
+											<span className="stat-icon">🌍</span>
+											<span className="stat-label">Your Data Location</span>
+										</div>
+									</div>
+								</div>
+
+								<div className="account-grid">
+									{/* Operating Costs Card */}
+									<div className="account-card cost-card">
+										<div className="card-header-with-select">
+											<h3>💰 Operating Costs</h3>
+											<select
+												className="nexus-select period-selector"
+												value={costPeriod}
+												onChange={(e) => setCostPeriod(e.target.value as any)}
+												disabled={loadingCosts}
+											>
+												<option value="current_month">Current Month</option>
+												<option value="last_30_days">Last 30 Days</option>
+												<option value="last_7_days">Last 7 Days</option>
+											</select>
+										</div>
+
+										<div className="cost-disclaimer">
+											<span className="disclaimer-icon">ℹ️</span>
+											<p>
+												<strong>Google Cloud Services Only</strong> - Costs shown include Firebase, Cloud Functions,
+												Storage, Vertex AI, and Cloud TTS.{" "}
+												<strong>
+													External API costs (Together.ai, OpenRouter, custom endpoints) are NOT included.
+												</strong>{" "}
+												Refer to those providers for their billing.
+											</p>
+										</div>
+
+										{loadingCosts && (
+											<div className="cost-loading">
+												<div className="nexus-spinner" />
+												<p>Loading cost data...</p>
+											</div>
+										)}
+
+										{!loadingCosts && operatingCosts?.error === "billing_export_not_configured" && (
+											<div className="cost-error">
+												<span className="error-icon">⚠️</span>
+												<p>
+													<strong>Billing Export Not Configured</strong>
+												</p>
+												<p className="error-details">
+													To enable cost tracking, set up billing export in Google Cloud Console → Billing → Billing
+													Export → BigQuery export.
+												</p>
+											</div>
+										)}
+
+										{!loadingCosts && operatingCosts?.breakdown && (
+											<div className="cost-breakdown">
+												<div className="cost-total">
+													<span className="total-label">Total</span>
+													<span className="total-amount">
+														{operatingCosts.breakdown.currency} ${operatingCosts.breakdown.total.toFixed(2)}
+													</span>
+												</div>
+												<div className="cost-items">
+													{operatingCosts.breakdown.firebase > 0 && (
+														<div className="cost-item">
+															<span className="cost-service">🔥 Firebase/Firestore</span>
+															<span className="cost-amount">${operatingCosts.breakdown.firebase.toFixed(2)}</span>
+														</div>
+													)}
+													{operatingCosts.breakdown.cloudFunctions > 0 && (
+														<div className="cost-item">
+															<span className="cost-service">⚡ Cloud Functions</span>
+															<span className="cost-amount">${operatingCosts.breakdown.cloudFunctions.toFixed(2)}</span>
+														</div>
+													)}
+													{operatingCosts.breakdown.storage > 0 && (
+														<div className="cost-item">
+															<span className="cost-service">💾 Cloud Storage</span>
+															<span className="cost-amount">${operatingCosts.breakdown.storage.toFixed(2)}</span>
+														</div>
+													)}
+													{operatingCosts.breakdown.vertexAI > 0 && (
+														<div className="cost-item">
+															<span className="cost-service">🤖 Vertex AI</span>
+															<span className="cost-amount">${operatingCosts.breakdown.vertexAI.toFixed(2)}</span>
+														</div>
+													)}
+													{operatingCosts.breakdown.cloudTTS > 0 && (
+														<div className="cost-item">
+															<span className="cost-service">🎙️ Cloud TTS</span>
+															<span className="cost-amount">${operatingCosts.breakdown.cloudTTS.toFixed(2)}</span>
+														</div>
+													)}
+													{operatingCosts.breakdown.networking > 0 && (
+														<div className="cost-item">
+															<span className="cost-service">🌐 Networking</span>
+															<span className="cost-amount">${operatingCosts.breakdown.networking.toFixed(2)}</span>
+														</div>
+													)}
+													{operatingCosts.breakdown.other > 0 && (
+														<div className="cost-item">
+															<span className="cost-service">📊 Other Services</span>
+															<span className="cost-amount">${operatingCosts.breakdown.other.toFixed(2)}</span>
+														</div>
+													)}
+												</div>
+												<p className="cost-note">
+													💡 These are YOUR costs for YOUR Google Cloud project. You have full control and visibility.
+												</p>
+											</div>
+										)}
+									</div>
+
+									{/* Profile Card */}
+									<div className="account-card">
+										<h3>👤 Profile</h3>
+										<div className="profile-info">
+											<div className="profile-row">
+												<span className="profile-label">Email</span>
+												<span className="profile-value">{user?.email}</span>
+											</div>
+											<div className="profile-row">
+												<span className="profile-label">Display Name</span>
+												{editingDisplayName ? (
+													<div className="display-name-edit">
+														<input
+															type="text"
+															className="nexus-input display-name-input"
+															value={newDisplayName}
+															onChange={(e) => setNewDisplayName(e.target.value)}
+															placeholder={profile?.displayName || "Enter your name"}
+														/>
+														<div className="display-name-actions">
+															<button type="button" className="nexus-btn nexus-btn-sm nexus-btn-primary"
+																onClick={handleSaveDisplayName}
+																disabled={savingDisplayName || !newDisplayName.trim()}
+															>
+																{savingDisplayName ? "..." : "✓"}
+															</button>
+															<button type="button" className="nexus-btn nexus-btn-sm nexus-btn-secondary"
+																onClick={() => {
+																	setEditingDisplayName(false);
+																	setNewDisplayName("");
+																}}
+															>
+																✕
+															</button>
+														</div>
+													</div>
+												) : (
+													<span
+														className="profile-value editable"
+														onClick={() => {
+															setEditingDisplayName(true);
+															setNewDisplayName(profile?.displayName || "");
+														}}
+													>
+														{profile?.displayName || "Click to set"}
+														<span className="edit-hint">✏️</span>
+													</span>
+												)}
+											</div>
+											<div className="profile-row">
+												<span className="profile-label">Member Since</span>
+												<span className="profile-value">
+													{profile?.createdAt?.toDate?.()?.toLocaleDateString() || "N/A"}
+												</span>
+											</div>
+										</div>
+									</div>
+
+									{/* Storage Card */}
+									<div className="account-card">
+										<h3>💾 Storage</h3>
+										<div className="storage-info">
+											<div className="storage-stats">
+												<span className="storage-used">{formatBytes(profile?.quota.storageUsedBytes || 0)}</span>
+												<span className="storage-separator"> / </span>
+												<span className="storage-limit">{profile?.quota.storageLimitGB || 2} GB</span>
+											</div>
+											<div className="progress-bar">
+												<div className="progress-bar-fill" style={{ width: `${getStoragePercentage()}%` }} />
+											</div>
+											<p className="storage-note">
+												{getStoragePercentage() < 80
+													? "You're doing great on storage!"
+													: "Consider cleaning up old files."}
+											</p>
+										</div>
+									</div>
+
+									{/* API Status Card */}
+									<div className="account-card status-card">
+										<h3>🔌 API Status</h3>
+										<div className="api-status-grid">
+											<div className={`api-status-item ${configuredKeys.together ? "connected" : ""}`}>
+												<span className="status-dot" />
+												<span>Together AI</span>
+											</div>
+											<div className={`api-status-item ${configuredKeys.openrouter ? "connected" : ""}`}>
+												<span className="status-dot" />
+												<span>OpenRouter</span>
+											</div>
+											<div className={`api-status-item ${configuredKeys.exa ? "connected" : ""}`}>
+												<span className="status-dot" />
+												<span>Exa.ai</span>
+											</div>
+										</div>
+										{!Object.values(configuredKeys).some(Boolean) && (
+											<p className="api-warning">
+												⚠️ Configure API keys in the API Keys tab or use Vertex AI native (no keys needed).
+											</p>
+										)}
+									</div>
+
+									{/* Password Change Button */}
+									<div className="account-card">
+										<h3>🔐 Password & Security</h3>
+										<p className="card-description">Manage your account password</p>
+										<button type="button" className="nexus-btn nexus-btn-secondary" onClick={() => setShowPasswordModal(true)}>
+											Change Password
+										</button>
+									</div>
+								</div>
+							</div>
+						)}
+
+						{/* API Keys Tab */}
+						{activeTab === "apikeys" && (
+							<div className="tab-panel">
+								<div className="byok-header">
+									<h2>🔑 Sovereign Cloud API Keys</h2>
+									<p>
+										Store your API keys securely in <strong>Google Secret Manager</strong>. Access your AI from any
+										device.
+									</p>
+
+									{/* Security Info */}
+									<div className="security-info">
+										<div className="info-header">
+											<span className="info-icon">🔐</span>
+											<h4>Secure Storage</h4>
+										</div>
+										<ul>
+											<li>
+												<strong>Encrypted in Secret Manager</strong> - Google-managed encryption at rest
+											</li>
+											<li>
+												<strong>Access from any device</strong> - Log in anywhere, your keys are available
+											</li>
+											<li>
+												<strong>Never exposed to browser</strong> - Cloud Functions access keys server-side
+											</li>
+											<li>
+												<strong>Audit logging</strong> - Track all key access via Cloud Audit Logs
+											</li>
+											<li>
+												<strong>Your sovereign deployment</strong> - Your Google account, your keys, your control
+											</li>
+										</ul>
+										<p className="info-footer">
+											💡 <strong>Personal AI:</strong> This is YOUR cloud deployment. Keys stored here power YOUR AI
+											assistant.
+										</p>
+									</div>
+								</div>
+
+								{keysSaved && <div className="form-success">✓ API keys saved to Secret Manager!</div>}
+
+								<div className="api-keys-grid">
+									{/* Together AI */}
+									<div className="api-key-card">
+										<div className="api-key-header">
+											<span className="provider-icon">🚀</span>
+											<div>
+												<h4>Together AI</h4>
+												<small>Primary - Chat, Images, Video, TTS, STT</small>
+												{configuredKeys.together && <span className="key-status configured">✓ Configured</span>}
+											</div>
+										</div>
+										<div className="form-group">
+											<div className="input-with-toggle">
+												<input
+													type={showKeys.together ? "text" : "password"}
+													className="nexus-input"
+													value={apiKeys.together}
+													onChange={(e) => setApiKeys((prev) => ({ ...prev, together: e.target.value }))}
+													placeholder={
+														configuredKeys.together ? "Enter new key to update" : "Enter Together AI API key"
+													}
+												/>
+												<button type="button" className="toggle-visibility" onClick={() => toggleShowKey("together")}>
+													{showKeys.together ? "🙈" : "👁️"}
+												</button>
+												{configuredKeys.together && (
+													<button type="button"
+														className="btn-delete-key"
+														onClick={() => handleDeleteKey("together")}
+														title="Delete key from Secret Manager"
+													>
+														🗑️
+													</button>
+												)}
+											</div>
+										</div>
+										<details className="api-instructions">
+											<summary>How to get your key</summary>
+											<ol>
+												<li>
+													Go to <strong>together.ai</strong>
+												</li>
+												<li>Create an account or sign in</li>
+												<li>Go to Settings → API Keys</li>
+												<li>Create and copy your key</li>
+											</ol>
+										</details>
+									</div>
+
+									{/* OpenRouter */}
+									<div className="api-key-card">
+										<div className="api-key-header">
+											<span className="provider-icon">🌐</span>
+											<div>
+												<h4>OpenRouter</h4>
+												<small>300+ models including 50+ free</small>
+												{configuredKeys.openrouter && <span className="key-status configured">✓ Configured</span>}
+											</div>
+										</div>
+										<div className="form-group">
+											<div className="input-with-toggle">
+												<input
+													type={showKeys.openrouter ? "text" : "password"}
+													className="nexus-input"
+													value={apiKeys.openrouter}
+													onChange={(e) => setApiKeys((prev) => ({ ...prev, openrouter: e.target.value }))}
+													placeholder={
+														configuredKeys.openrouter ? "Enter new key to update" : "Enter OpenRouter API key"
+													}
+												/>
+												<button type="button" className="toggle-visibility" onClick={() => toggleShowKey("openrouter")}>
+													{showKeys.openrouter ? "🙈" : "👁️"}
+												</button>
+												{configuredKeys.openrouter && (
+													<button type="button"
+														className="btn-delete-key"
+														onClick={() => handleDeleteKey("openrouter")}
+														title="Delete key from Secret Manager"
+													>
+														🗑️
+													</button>
+												)}
+											</div>
+										</div>
+										<details className="api-instructions">
+											<summary>How to get your key</summary>
+											<ol>
+												<li>
+													Go to <strong>openrouter.ai</strong>
+												</li>
+												<li>Sign in with Google, Discord, or email</li>
+												<li>Click your name → Keys → Create Key</li>
+												<li>Copy and paste above</li>
+											</ol>
+											<p className="tip-note">💡 50+ free models available!</p>
+										</details>
+									</div>
+
+									{/* Exa.ai */}
+									<div className="api-key-card">
+										<div className="api-key-header">
+											<span className="provider-icon">🔍</span>
+											<div>
+												<h4>Exa.ai</h4>
+												<small>Web Search & Research</small>
+												{configuredKeys.exa && <span className="key-status configured">✓ Configured</span>}
+											</div>
+										</div>
+										<div className="form-group">
+											<div className="input-with-toggle">
+												<input
+													type={showKeys.exa ? "text" : "password"}
+													className="nexus-input"
+													value={apiKeys.exa}
+													onChange={(e) => setApiKeys((prev) => ({ ...prev, exa: e.target.value }))}
+													placeholder={configuredKeys.exa ? "Enter new key to update" : "Enter Exa.ai API key"}
+												/>
+												<button type="button" className="toggle-visibility" onClick={() => toggleShowKey("exa")}>
+													{showKeys.exa ? "🙈" : "👁️"}
+												</button>
+												{configuredKeys.exa && (
+													<button type="button"
+														className="btn-delete-key"
+														onClick={() => handleDeleteKey("exa")}
+														title="Delete key from Secret Manager"
+													>
+														🗑️
+													</button>
+												)}
+											</div>
+										</div>
+										<details className="api-instructions">
+											<summary>How to get your key</summary>
+											<ol>
+												<li>
+													Go to <strong>exa.ai</strong>
+												</li>
+												<li>Sign up or sign in</li>
+												<li>Go to Dashboard → API Keys</li>
+												<li>Create and copy your key</li>
+											</ol>
+										</details>
+									</div>
+
+									{/* OpenAI */}
+									<div className="api-key-card">
+										<div className="api-key-header">
+											<span className="provider-icon">🤖</span>
+											<div>
+												<h4>OpenAI</h4>
+												<small>GPT-4, DALL-E</small>
+												{configuredKeys.openai && <span className="key-status configured">✓ Configured</span>}
+											</div>
+										</div>
+										<div className="form-group">
+											<div className="input-with-toggle">
+												<input
+													type={showKeys.openai ? "text" : "password"}
+													className="nexus-input"
+													value={apiKeys.openai}
+													onChange={(e) => setApiKeys((prev) => ({ ...prev, openai: e.target.value }))}
+													placeholder={configuredKeys.openai ? "Enter new key to update" : "Enter OpenAI API key"}
+												/>
+												<button type="button" className="toggle-visibility" onClick={() => toggleShowKey("openai")}>
+													{showKeys.openai ? "🙈" : "👁️"}
+												</button>
+												{configuredKeys.openai && (
+													<button type="button"
+														className="btn-delete-key"
+														onClick={() => handleDeleteKey("openai")}
+														title="Delete key from Secret Manager"
+													>
+														🗑️
+													</button>
+												)}
+											</div>
+										</div>
+										<details className="api-instructions">
+											<summary>How to get your key</summary>
+											<ol>
+												<li>
+													Go to <strong>platform.openai.com</strong>
+												</li>
+												<li>Sign in or create account</li>
+												<li>Go to API → API Keys</li>
+												<li>Create and copy your key</li>
+											</ol>
+										</details>
+									</div>
+
+									{/* Anthropic */}
+									<div className="api-key-card">
+										<div className="api-key-header">
+											<span className="provider-icon">🧠</span>
+											<div>
+												<h4>Anthropic</h4>
+												<small>Claude 3.5 Sonnet</small>
+												{configuredKeys.anthropic && <span className="key-status configured">✓ Configured</span>}
+											</div>
+										</div>
+										<div className="form-group">
+											<div className="input-with-toggle">
+												<input
+													type={showKeys.anthropic ? "text" : "password"}
+													className="nexus-input"
+													value={apiKeys.anthropic}
+													onChange={(e) => setApiKeys((prev) => ({ ...prev, anthropic: e.target.value }))}
+													placeholder={configuredKeys.anthropic ? "Enter new key to update" : "Enter Anthropic API key"}
+												/>
+												<button type="button" className="toggle-visibility" onClick={() => toggleShowKey("anthropic")}>
+													{showKeys.anthropic ? "🙈" : "👁️"}
+												</button>
+												{configuredKeys.anthropic && (
+													<button type="button"
+														className="btn-delete-key"
+														onClick={() => handleDeleteKey("anthropic")}
+														title="Delete key from Secret Manager"
+													>
+														🗑️
+													</button>
+												)}
+											</div>
+										</div>
+										<details className="api-instructions">
+											<summary>How to get your key</summary>
+											<ol>
+												<li>
+													Go to <strong>console.anthropic.com</strong>
+												</li>
+												<li>Sign in or create account</li>
+												<li>Go to API Keys</li>
+												<li>Create and copy your key</li>
+											</ol>
+										</details>
+									</div>
+
+									{/* Groq */}
+									<div className="api-key-card">
+										<div className="api-key-header">
+											<span className="provider-icon">⚡</span>
+											<div>
+												<h4>Groq</h4>
+												<small>Ultra-fast inference</small>
+												{configuredKeys.groq && <span className="key-status configured">✓ Configured</span>}
+											</div>
+										</div>
+										<div className="form-group">
+											<div className="input-with-toggle">
+												<input
+													type={showKeys.groq ? "text" : "password"}
+													className="nexus-input"
+													value={apiKeys.groq}
+													onChange={(e) => setApiKeys((prev) => ({ ...prev, groq: e.target.value }))}
+													placeholder={configuredKeys.groq ? "Enter new key to update" : "Enter Groq API key"}
+												/>
+												<button type="button" className="toggle-visibility" onClick={() => toggleShowKey("groq")}>
+													{showKeys.groq ? "🙈" : "👁️"}
+												</button>
+												{configuredKeys.groq && (
+													<button type="button"
+														className="btn-delete-key"
+														onClick={() => handleDeleteKey("groq")}
+														title="Delete key from Secret Manager"
+													>
+														🗑️
+													</button>
+												)}
+											</div>
+										</div>
+										<details className="api-instructions">
+											<summary>How to get your key</summary>
+											<ol>
+												<li>
+													Go to <strong>console.groq.com</strong>
+												</li>
+												<li>Sign in or create account</li>
+												<li>Go to API Keys</li>
+												<li>Create and copy your key</li>
+											</ol>
+										</details>
+									</div>
+								</div>
+
+								{/* Save Button */}
+								<div className="form-actions">
+									<button type="button" className="nexus-btn nexus-btn-primary" onClick={handleSaveKeys} disabled={savingKeys}>
+										{savingKeys ? "Saving to Secret Manager..." : "💾 Save Keys to Secret Manager"}
+									</button>
+								</div>
+							</div>
+						)}
+
+						{/* Characters Tab */}
+						{activeTab === "characters" && (
+							<div className="tab-panel">
+								{showCharacterEditor ? (
+									<CharacterEditor
+										onClose={() => setShowCharacterEditor(false)}
+										onCharacterSelected={(char) => {
+											setCharacter(char);
+											setShowCharacterEditor(false);
+										}}
+									/>
+								) : (
+									<>
+										<div className="account-card">
+											<div className="card-header-row">
+												<h3>🎭 Active Character</h3>
+												<button type="button" onClick={() => setShowCharacterEditor(true)}
+													className="nexus-btn nexus-btn-secondary nexus-btn-sm"
+												>
+													Switch / Create
+												</button>
+											</div>
+
+											{character && (
+												<div className="character-display">
+													{character.iconPath ? (
+														<img src={character.iconPath} alt={character.name} className="character-avatar-img" />
+													) : (
+														<div className="character-avatar-placeholder" />
+													)}
+													<div className="character-info">
+														<h4>
+															{character.name} {character.isBuiltIn && <span className="badge-builtin">Built-in</span>}
+														</h4>
+														<p className="character-description">{character.descriptionSafe.slice(0, 150)}...</p>
+													</div>
+												</div>
+											)}
+										</div>
+
+										<div className="account-card">
+											<h3>💜 Emotional State</h3>
+
+											<div className="info-box">
+												<p>
+													{character?.name || "Elara"} has an emotional system that responds to how you treat her.
+													Praise improves mood, criticism decreases it. This affects her communication style naturally.
+												</p>
+											</div>
+
+											{character &&
+												(() => {
+													const tracker = getMoodTracker();
+													const stats = tracker.getStats();
+													return (
+														<div className="mood-display">
+															<div className="mood-meter">
+																<div className="mood-bar-bg">
+																	<div className="mood-bar-fill" style={{ width: `${stats.current}%` }} />
+																</div>
+																<div className="mood-labels">
+																	<span>😢 0</span>
+																	<span className="mood-current">{stats.current}</span>
+																	<span>100 😊</span>
+																</div>
+															</div>
+															<div className="mood-stats">
+																<div className="mood-stat">
+																	<span className="stat-label">Current</span>
+																	<span className="stat-value">{stats.description}</span>
+																</div>
+																<div className="mood-stat">
+																	<span className="stat-label">Baseline</span>
+																	<span className="stat-value">{stats.baseline}/100</span>
+																</div>
+																<div className="mood-stat">
+																	<span className="stat-label">Trend</span>
+																	<span className="stat-value">{stats.trend}</span>
+																</div>
+															</div>
+														</div>
+													);
+												})()}
+										</div>
+
+										{/* Model Selection */}
+										<div className="account-card">
+											<h3>🤖 Default Chat Model</h3>
+											<p className="card-description">Choose your preferred AI model for conversations.</p>
+											{loadingModels ? (
+												<p className="loading-text">Loading models...</p>
+											) : availableModels.length === 0 ? (
+												<p className="warning-text">⚠️ No models available. Configure your API key above.</p>
+											) : (
+												<select
+													className="nexus-input model-select"
+													value={selectedModel}
+													onChange={(e) => handleModelChange(e.target.value)}
+												>
+													{availableModels.map((model) => {
+														const meta = model.metadata as ChatModelMetadata;
+														return (
+															<option key={model.id} value={model.id}>
+																{model.displayName || model.id} {meta?.free ? "(Free)" : ""}
+															</option>
+														);
+													})}
+												</select>
+											)}
+										</div>
+									</>
+								)}
+							</div>
+						)}
+
+						{/* Knowledge Tab */}
+						{activeTab === "knowledge" && (
+							<div className="tab-panel">
+								<KnowledgePanel />
+							</div>
+						)}
+
+						{/* About Tab */}
+						{activeTab === "about" && (
+							<div className="tab-panel">
+								<div className="about-content">
+									<div className="about-header">
+										<img src="/icon.png" alt="OpenElara" className="about-logo" />
+										<div>
+											<h2 className="about-title">{ELARA.NAME}</h2>
+											<p className="about-version">Cloud Edition • v1.0.0</p>
+										</div>
+									</div>
+
+									<div className="about-description">
+										<p>
+											{ELARA.NAME} is your sovereign AI assistant - a BYOK (Bring Your Own Key) platform that puts you
+											in control of your AI interactions.
+										</p>
+									</div>
+
+									<div className="about-features">
+										<h3>✨ Features</h3>
+										<ul>
+											<li>💬 Multi-model chat with thinking tags</li>
+											<li>🖼️ AI image generation (FLUX, Stable Diffusion)</li>
+											<li>🎬 AI video generation</li>
+											<li>🎤 Speech-to-text voice input</li>
+											<li>🔊 Text-to-speech output</li>
+											<li>📎 File attachments for context</li>
+											<li>🔍 Power Knowledge (Exa.ai search)</li>
+											<li>📂 File format conversion</li>
+											<li>🎭 Character personas</li>
+											<li>📝 Prompt templates</li>
+											<li>🧠 Knowledge base with RAG</li>
+										</ul>
+									</div>
+
+									<div className="about-links">
+										<h3>🔗 Links</h3>
+										<div className="link-grid">
+											<a href="/PRIVACY.md" target="_blank" className="about-link" rel="noopener">
+												🔒 Privacy Policy
+											</a>
+											<a href="/TERMS.md" target="_blank" className="about-link" rel="noopener">
+												📜 Terms of Service
+											</a>
+											<a
+												href="https://github.com/applymytech/openElaraCloud"
+												target="_blank"
+												rel="noopener"
+												className="about-link"
+											>
+												💻 GitHub
+											</a>
+										</div>
+									</div>
+								</div>
+							</div>
+						)}
+					</div>
+
+					{/* Launch Bar */}
+					<div className="launch-bar">
+						<span>Ready to chat?</span>
+						<button type="button" onClick={launchChat} className="nexus-btn nexus-btn-primary launch-btn">
+							🚀 Launch {ELARA.NAME}
+						</button>
+					</div>
+				</div>
+
+				{/* Password Change Modal */}
+				{showPasswordModal && (
+					<div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
+						<div className="modal-content" onClick={(e) => e.stopPropagation()}>
+							<div className="modal-header">
+								<h2>🔐 Change Password</h2>
+								<button type="button" className="modal-close" onClick={() => setShowPasswordModal(false)}>
+									✕
+								</button>
+							</div>
+
+							<form onSubmit={handlePasswordChange} className="modal-form">
+								{passwordError && <div className="form-error">⚠️ {passwordError}</div>}
+								{passwordSuccess && <div className="form-success">✓ {passwordSuccess}</div>}
+
+								<div className="form-group">
+									<label className="nexus-label">Current Password</label>
+									<input
+										type="password"
+										className="nexus-input"
+										value={currentPassword}
+										onChange={(e) => setCurrentPassword(e.target.value)}
+										placeholder="••••••••"
+										required
+									/>
+								</div>
+
+								<div className="form-group">
+									<label className="nexus-label">New Password</label>
+									<input
+										type="password"
+										className="nexus-input"
+										value={newPassword}
+										onChange={(e) => setNewPassword(e.target.value)}
+										placeholder="••••••••"
+										required
+									/>
+								</div>
+
+								<div className="form-group">
+									<label className="nexus-label">Confirm New Password</label>
+									<input
+										type="password"
+										className="nexus-input"
+										value={confirmPassword}
+										onChange={(e) => setConfirmPassword(e.target.value)}
+										placeholder="••••••••"
+										required
+									/>
+								</div>
+
+								<div className="modal-actions">
+									<button type="button"
+										className="nexus-btn nexus-btn-secondary"
+										onClick={() => setShowPasswordModal(false)}
+									>
+										Cancel
+									</button>
+									<button type="submit" className="nexus-btn nexus-btn-primary" disabled={changingPassword}>
+										{changingPassword ? "Changing..." : "Change Password"}
+									</button>
+								</div>
+							</form>
+						</div>
+					</div>
+				)}
+			</main>
+
+			<style jsx>{`
         .account-page {
           min-height: 100vh;
           background: var(--main-bg-color);
@@ -2233,6 +2579,6 @@ export default function Account() {
           }
         }
       `}</style>
-    </div>
-  );
+		</div>
+	);
 }

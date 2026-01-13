@@ -1,0 +1,20 @@
+{
+  "name": "@openelara-cloud/tools",
+  "version": "1.0.0",
+  "description": "Development and testing tools for OpenElara Cloud",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "verify:images": "tsx model-verification/verify-image-models.ts",
+    "test:deployment": "tsx deployment-testing/verify-deployment.ts",
+    "test:firebase-rules": "firebase emulators:exec --only firestore 'npm run test:rules'"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}

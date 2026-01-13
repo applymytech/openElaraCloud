@@ -1,6 +1,6 @@
 /**
  * Application Constants
- * 
+ *
  * Single source of truth for all magic numbers and configuration values.
  */
 
@@ -111,17 +111,28 @@ export const AUTO_SAVE_DEBOUNCE_MS = 1000;
 // API DEFAULTS
 // ============================================================================
 
-/** Default chat model */
-export const DEFAULT_CHAT_MODEL = 'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free';
+// ████████████████████████████████████████████████████████████████████████████
+// █                                                                          █
+// █   🚫 DEFAULT_CHAT_MODEL - PERMANENTLY NUKED 🚫                           █
+// █                                                                          █
+// █   There is NO default chat model. Models are loaded dynamically          █
+// █   from the /models API endpoint.                                         █
+// █                                                                          █
+// █   If user has no API key configured → show "Configure API key" UI        █
+// █   If user has API key → fetch available models from API                  █
+// █                                                                          █
+// █   DO NOT ADD A HARDCODED DEFAULT MODEL HERE.                             █
+// █                                                                          █
+// ████████████████████████████████████████████████████████████████████████████
 
 /** Default image model (FLUX.1-schnell-Free deprecated 2026-01-08) */
-export const DEFAULT_IMAGE_MODEL = 'black-forest-labs/FLUX.1-schnell';
+export const DEFAULT_IMAGE_MODEL = "black-forest-labs/FLUX.1-schnell";
 
 /** Default video model */
-export const DEFAULT_VIDEO_MODEL = 'minimax/video-01';
+export const DEFAULT_VIDEO_MODEL = "minimax/video-01";
 
 /** Default TTS model */
-export const DEFAULT_TTS_MODEL = 'kokoro-v1';
+export const DEFAULT_TTS_MODEL = "kokoro-v1";
 
 /** Default temperature for chat */
 export const DEFAULT_TEMPERATURE = 0.7;
@@ -138,24 +149,24 @@ export const DEFAULT_IMAGE_HEIGHT = 1024;
 // ============================================================================
 
 /** Primary Cloud Functions region */
-export const FUNCTIONS_REGION = 'us-central1';
+export const FUNCTIONS_REGION = "us-central1";
 
 /** Storage bucket regions (multi-region) */
-export const STORAGE_REGION = 'us';
+export const STORAGE_REGION = "us";
 
 // ============================================================================
 // ERROR MESSAGES
 // ============================================================================
 
 export const ERROR_MESSAGES = {
-  TRIAL_EXPIRED: 'Your 7-day trial has expired. Deploy your own instance to continue!',
-  NO_API_KEYS: 'No API keys configured. Add your keys in Account → API Keys or use cloud mode.',
-  RATE_LIMITED: 'Too many requests. Please wait a moment and try again.',
-  FILE_TOO_LARGE: 'File is too large. Maximum size is',
-  INVALID_FILE_TYPE: 'Invalid file type. Supported types:',
-  NETWORK_ERROR: 'Network error. Check your connection and try again.',
-  AUTH_REQUIRED: 'You must be signed in to use this feature.',
-  CONFIG_MISSING: 'Firebase configuration is missing. Check your deployment setup.',
+	TRIAL_EXPIRED: "Your 7-day trial has expired. Deploy your own instance to continue!",
+	NO_API_KEYS: "No API keys configured. Add your keys in Account → API Keys or use cloud mode.",
+	RATE_LIMITED: "Too many requests. Please wait a moment and try again.",
+	FILE_TOO_LARGE: "File is too large. Maximum size is",
+	INVALID_FILE_TYPE: "Invalid file type. Supported types:",
+	NETWORK_ERROR: "Network error. Check your connection and try again.",
+	AUTH_REQUIRED: "You must be signed in to use this feature.",
+	CONFIG_MISSING: "Firebase configuration is missing. Check your deployment setup.",
 } as const;
 
 // ============================================================================
@@ -163,7 +174,7 @@ export const ERROR_MESSAGES = {
 // ============================================================================
 
 /** Enable debug logging in development */
-export const DEBUG_ENABLED = process.env.NODE_ENV === 'development';
+export const DEBUG_ENABLED = process.env.NODE_ENV === "development";
 
 /** Enable trial enforcement */
 export const TRIAL_ENFORCEMENT_ENABLED = true;

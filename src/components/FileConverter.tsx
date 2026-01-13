@@ -1,8 +1,8 @@
 /**
  * File Converter Panel - Convert files for AI ingestion
- * 
+ *
  * PORTED FROM DESKTOP: file-converter/file-converter.js
- * 
+ *
  * Features:
  * - Convert text/code files to markdown
  * - Convert images between formats
@@ -10,348 +10,345 @@
  * - Direct injection into Knowledge Base
  */
 
-import { useState, useRef } from 'react';
+import { useRef, useState } from "react";
 import {
-  convertTextFile,
-  convertImage,
-  batchConvertToMarkdown,
-  getImageMetadata,
-  isTextFile,
-  isImageFile,
-  getSupportedExtensions,
-  formatBytes,
-  type ConversionResult,
-  type ImageConversionResult,
-  type ImageConversionOptions,
-} from '../lib/fileConverter';
-import { ingestKnowledgeFile } from '../lib/rag';
+	batchConvertToMarkdown,
+	type ConversionResult,
+	convertImage,
+	formatBytes,
+	type ImageConversionOptions,
+	type ImageConversionResult,
+	isImageFile,
+} from "../lib/fileConverter";
+import { ingestKnowledgeFile } from "../lib/rag";
 
 interface FileConverterProps {
-  isOpen: boolean;
-  onClose: () => void;
+	isOpen: boolean;
+	onClose: () => void;
 }
 
-type ConvertMode = 'text' | 'image';
+type ConvertMode = "text" | "image";
 
 export default function FileConverter({ isOpen, onClose }: FileConverterProps) {
-  const [mode, setMode] = useState<ConvertMode>('text');
-  const [files, setFiles] = useState<File[]>([]);
-  const [converting, setConverting] = useState(false);
-  const [results, setResults] = useState<(ConversionResult | ImageConversionResult)[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  
-  // Image options
-  const [imageFormat, setImageFormat] = useState<'png' | 'jpeg' | 'webp'>('png');
-  const [imageQuality, setImageQuality] = useState(92);
-  const [maxWidth, setMaxWidth] = useState<number | ''>('');
-  const [maxHeight, setMaxHeight] = useState<number | ''>('');
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
+	const [mode, setMode] = useState<ConvertMode>("text");
+	const [files, setFiles] = useState<File[]>([]);
+	const [converting, setConverting] = useState(false);
+	const [results, setResults] = useState<(ConversionResult | ImageConversionResult)[]>([]);
+	const [error, setError] = useState<string | null>(null);
+	const [success, setSuccess] = useState<string | null>(null);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(e.target.files || []);
-    setFiles(selectedFiles);
-    setResults([]);
-    setError(null);
-    setSuccess(null);
-  };
+	// Image options
+	const [imageFormat, setImageFormat] = useState<"png" | "jpeg" | "webp">("png");
+	const [imageQuality, setImageQuality] = useState(92);
+	const [maxWidth, setMaxWidth] = useState<number | "">("");
+	const [maxHeight, setMaxHeight] = useState<number | "">("");
 
-  const handleConvert = async () => {
-    if (files.length === 0) return;
-    
-    setConverting(true);
-    setError(null);
-    setSuccess(null);
-    setResults([]);
-    
-    try {
-      if (mode === 'text') {
-        const conversionResults = await batchConvertToMarkdown(files);
-        setResults(conversionResults);
-        
-        const successCount = conversionResults.filter(r => r.success).length;
-        if (successCount > 0) {
-          setSuccess(`Converted ${successCount} of ${files.length} files`);
-        }
-      } else {
-        // Image conversion
-        const options: ImageConversionOptions = {
-          format: imageFormat,
-          quality: imageQuality / 100,
-          maxWidth: maxWidth || undefined,
-          maxHeight: maxHeight || undefined,
-        };
-        
-        const conversionResults: ImageConversionResult[] = [];
-        for (const file of files) {
-          if (isImageFile(file.name)) {
-            const result = await convertImage(file, options);
-            conversionResults.push(result);
-          }
-        }
-        setResults(conversionResults);
-        
-        const successCount = conversionResults.filter(r => r.success).length;
-        if (successCount > 0) {
-          setSuccess(`Converted ${successCount} of ${files.length} images`);
-        }
-      }
-    } catch (e: any) {
-      setError(e.message || 'Conversion failed');
-    } finally {
-      setConverting(false);
-    }
-  };
+	const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleIngestToKnowledge = async (result: ConversionResult) => {
-    if (!result.success || !result.markdown) return;
-    
-    try {
-      // Create a file-like object for ingestion
-      const blob = new Blob([result.markdown], { type: 'text/markdown' });
-      const file = new File([blob], result.filename.replace(/\.[^.]+$/, '.md'), {
-        type: 'text/markdown',
-      });
-      
-      await ingestKnowledgeFile(file);
-      setSuccess(`"${result.filename}" added to Knowledge Base!`);
-    } catch (e: any) {
-      setError(e.message || 'Failed to add to Knowledge Base');
-    }
-  };
+	const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const selectedFiles = Array.from(e.target.files || []);
+		setFiles(selectedFiles);
+		setResults([]);
+		setError(null);
+		setSuccess(null);
+	};
 
-  const handleDownload = (result: ConversionResult | ImageConversionResult) => {
-    if (!result.success) return;
-    
-    if ('markdown' in result && result.markdown) {
-      // Download markdown
-      const blob = new Blob([result.markdown], { type: 'text/markdown' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = result.filename.replace(/\.[^.]+$/, '.md');
-      a.click();
-      URL.revokeObjectURL(url);
-    } else if ('dataUrl' in result && result.dataUrl) {
-      // Download image
-      const a = document.createElement('a');
-      a.href = result.dataUrl;
-      a.download = `converted.${imageFormat}`;
-      a.click();
-    }
-  };
+	const handleConvert = async () => {
+		if (files.length === 0) {
+			return;
+		}
 
-  const handleClear = () => {
-    setFiles([]);
-    setResults([]);
-    setError(null);
-    setSuccess(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
+		setConverting(true);
+		setError(null);
+		setSuccess(null);
+		setResults([]);
 
-  if (!isOpen) return null;
+		try {
+			if (mode === "text") {
+				const conversionResults = await batchConvertToMarkdown(files);
+				setResults(conversionResults);
 
-  const acceptedFormats = mode === 'text' 
-    ? '.txt,.md,.json,.csv,.xml,.yaml,.yml,.html,.htm,.js,.ts,.jsx,.tsx,.py,.java,.c,.cpp,.h,.cs,.go,.rs,.rb,.php,.swift,.css,.scss,.vue,.svelte,.sql,.sh,.ps1'
-    : '.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg';
+				const successCount = conversionResults.filter((r) => r.success).length;
+				if (successCount > 0) {
+					setSuccess(`Converted ${successCount} of ${files.length} files`);
+				}
+			} else {
+				// Image conversion
+				const options: ImageConversionOptions = {
+					format: imageFormat,
+					quality: imageQuality / 100,
+					maxWidth: maxWidth || undefined,
+					maxHeight: maxHeight || undefined,
+				};
 
-  return (
-    <div className="converter-overlay" onClick={onClose}>
-      <div className="converter-panel" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="conv-header">
-          <div className="conv-title">
-            <span className="conv-icon">🔄</span>
-            <h2>File Converter</h2>
-          </div>
-          <button className="conv-close" onClick={onClose}>×</button>
-        </div>
+				const conversionResults: ImageConversionResult[] = [];
+				for (const file of files) {
+					if (isImageFile(file.name)) {
+						const result = await convertImage(file, options);
+						conversionResults.push(result);
+					}
+				}
+				setResults(conversionResults);
 
-        {/* Mode Tabs */}
-        <div className="conv-tabs">
-          <button
-            className={`conv-tab ${mode === 'text' ? 'active' : ''}`}
-            onClick={() => { setMode('text'); handleClear(); }}
-          >
-            📄 Text → Markdown
-          </button>
-          <button
-            className={`conv-tab ${mode === 'image' ? 'active' : ''}`}
-            onClick={() => { setMode('image'); handleClear(); }}
-          >
-            🖼️ Image Converter
-          </button>
-        </div>
+				const successCount = conversionResults.filter((r) => r.success).length;
+				if (successCount > 0) {
+					setSuccess(`Converted ${successCount} of ${files.length} images`);
+				}
+			}
+		} catch (e: any) {
+			setError(e.message || "Conversion failed");
+		} finally {
+			setConverting(false);
+		}
+	};
 
-        <div className="conv-content">
-          {/* File Selection */}
-          <div className="conv-section">
-            <label className="conv-label">Select Files:</label>
-            <div className="conv-file-input-wrapper">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept={acceptedFormats}
-                onChange={handleFileSelect}
-                className="conv-file-input"
-              />
-              <div className="conv-file-hint">
-                {mode === 'text' 
-                  ? 'Supported: .txt, .md, .json, .csv, .html, .js, .ts, .py, and more code files'
-                  : 'Supported: .png, .jpg, .jpeg, .gif, .webp, .bmp, .svg'}
-              </div>
-            </div>
-          </div>
+	const handleIngestToKnowledge = async (result: ConversionResult) => {
+		if (!result.success || !result.markdown) {
+			return;
+		}
 
-          {/* Selected Files List */}
-          {files.length > 0 && (
-            <div className="conv-section">
-              <label className="conv-label">Selected ({files.length} files):</label>
-              <div className="conv-file-list">
-                {files.map((file, i) => (
-                  <div key={i} className="conv-file-item">
-                    <span className="conv-file-name">{file.name}</span>
-                    <span className="conv-file-size">{formatBytes(file.size)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+		try {
+			// Create a file-like object for ingestion
+			const blob = new Blob([result.markdown], { type: "text/markdown" });
+			const file = new File([blob], result.filename.replace(/\.[^.]+$/, ".md"), {
+				type: "text/markdown",
+			});
 
-          {/* Image Options */}
-          {mode === 'image' && files.length > 0 && (
-            <div className="conv-section conv-options">
-              <label className="conv-label">Output Options:</label>
-              
-              <div className="conv-option-row">
-                <label>Format:</label>
-                <select
-                  value={imageFormat}
-                  onChange={e => setImageFormat(e.target.value as any)}
-                >
-                  <option value="png">PNG (lossless)</option>
-                  <option value="jpeg">JPEG (lossy)</option>
-                  <option value="webp">WebP (modern)</option>
-                </select>
-              </div>
+			await ingestKnowledgeFile(file);
+			setSuccess(`"${result.filename}" added to Knowledge Base!`);
+		} catch (e: any) {
+			setError(e.message || "Failed to add to Knowledge Base");
+		}
+	};
 
-              {(imageFormat === 'jpeg' || imageFormat === 'webp') && (
-                <div className="conv-option-row">
-                  <label>Quality: {imageQuality}%</label>
-                  <input
-                    type="range"
-                    min="10"
-                    max="100"
-                    value={imageQuality}
-                    onChange={e => setImageQuality(parseInt(e.target.value))}
-                  />
-                </div>
-              )}
+	const handleDownload = (result: ConversionResult | ImageConversionResult) => {
+		if (!result.success) {
+			return;
+		}
 
-              <div className="conv-option-row">
-                <label>Max Width:</label>
-                <input
-                  type="number"
-                  placeholder="No limit"
-                  value={maxWidth}
-                  onChange={e => setMaxWidth(e.target.value ? parseInt(e.target.value) : '')}
-                />
-              </div>
+		if ("markdown" in result && result.markdown) {
+			// Download markdown
+			const blob = new Blob([result.markdown], { type: "text/markdown" });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = result.filename.replace(/\.[^.]+$/, ".md");
+			a.click();
+			URL.revokeObjectURL(url);
+		} else if ("dataUrl" in result && result.dataUrl) {
+			// Download image
+			const a = document.createElement("a");
+			a.href = result.dataUrl;
+			a.download = `converted.${imageFormat}`;
+			a.click();
+		}
+	};
 
-              <div className="conv-option-row">
-                <label>Max Height:</label>
-                <input
-                  type="number"
-                  placeholder="No limit"
-                  value={maxHeight}
-                  onChange={e => setMaxHeight(e.target.value ? parseInt(e.target.value) : '')}
-                />
-              </div>
-            </div>
-          )}
+	const handleClear = () => {
+		setFiles([]);
+		setResults([]);
+		setError(null);
+		setSuccess(null);
+		if (fileInputRef.current) {
+			fileInputRef.current.value = "";
+		}
+	};
 
-          {/* Actions */}
-          <div className="conv-actions">
-            <button
-              className="conv-btn conv-btn-primary"
-              onClick={handleConvert}
-              disabled={converting || files.length === 0}
-            >
-              {converting ? 'Converting...' : `Convert ${files.length} File${files.length !== 1 ? 's' : ''}`}
-            </button>
-            <button
-              className="conv-btn conv-btn-secondary"
-              onClick={handleClear}
-              disabled={converting}
-            >
-              Clear
-            </button>
-          </div>
+	if (!isOpen) {
+		return null;
+	}
 
-          {/* Messages */}
-          {error && (
-            <div className="conv-message conv-error">
-              ❌ {error}
-            </div>
-          )}
-          {success && (
-            <div className="conv-message conv-success">
-              ✅ {success}
-            </div>
-          )}
+	const acceptedFormats =
+		mode === "text"
+			? ".txt,.md,.json,.csv,.xml,.yaml,.yml,.html,.htm,.js,.ts,.jsx,.tsx,.py,.java,.c,.cpp,.h,.cs,.go,.rs,.rb,.php,.swift,.css,.scss,.vue,.svelte,.sql,.sh,.ps1"
+			: ".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg";
 
-          {/* Results */}
-          {results.length > 0 && (
-            <div className="conv-section conv-results">
-              <label className="conv-label">Results:</label>
-              <div className="conv-results-list">
-                {results.map((result, i) => (
-                  <div key={i} className={`conv-result-item ${result.success ? 'success' : 'error'}`}>
-                    {'filename' in result && (
-                      <div className="conv-result-name">{result.filename}</div>
-                    )}
-                    
-                    {result.success ? (
-                      <div className="conv-result-details">
-                        <span>{formatBytes(result.originalSize)} → {formatBytes(result.convertedSize || 0)}</span>
-                        {'width' in result && result.width && (
-                          <span>{result.width}×{result.height}px</span>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="conv-result-error">{result.error}</div>
-                    )}
+	return (
+		<div className="converter-overlay" onClick={onClose}>
+			<div className="converter-panel" onClick={(e) => e.stopPropagation()}>
+				{/* Header */}
+				<div className="conv-header">
+					<div className="conv-title">
+						<span className="conv-icon">🔄</span>
+						<h2>File Converter</h2>
+					</div>
+					<button className="conv-close" onClick={onClose}>
+						×
+					</button>
+				</div>
 
-                    {result.success && (
-                      <div className="conv-result-actions">
-                        <button
-                          className="conv-btn-small"
-                          onClick={() => handleDownload(result)}
-                        >
-                          💾 Download
-                        </button>
-                        {mode === 'text' && 'markdown' in result && (
-                          <button
-                            className="conv-btn-small conv-btn-knowledge"
-                            onClick={() => handleIngestToKnowledge(result as ConversionResult)}
-                          >
-                            🧠 Add to Knowledge
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+				{/* Mode Tabs */}
+				<div className="conv-tabs">
+					<button
+						className={`conv-tab ${mode === "text" ? "active" : ""}`}
+						onClick={() => {
+							setMode("text");
+							handleClear();
+						}}
+					>
+						📄 Text → Markdown
+					</button>
+					<button
+						className={`conv-tab ${mode === "image" ? "active" : ""}`}
+						onClick={() => {
+							setMode("image");
+							handleClear();
+						}}
+					>
+						🖼️ Image Converter
+					</button>
+				</div>
 
-        <style jsx>{`
+				<div className="conv-content">
+					{/* File Selection */}
+					<div className="conv-section">
+						<label className="conv-label">Select Files:</label>
+						<div className="conv-file-input-wrapper">
+							<input
+								ref={fileInputRef}
+								type="file"
+								multiple
+								accept={acceptedFormats}
+								onChange={handleFileSelect}
+								className="conv-file-input"
+							/>
+							<div className="conv-file-hint">
+								{mode === "text"
+									? "Supported: .txt, .md, .json, .csv, .html, .js, .ts, .py, and more code files"
+									: "Supported: .png, .jpg, .jpeg, .gif, .webp, .bmp, .svg"}
+							</div>
+						</div>
+					</div>
+
+					{/* Selected Files List */}
+					{files.length > 0 && (
+						<div className="conv-section">
+							<label className="conv-label">Selected ({files.length} files):</label>
+							<div className="conv-file-list">
+								{files.map((file, i) => (
+									<div key={i} className="conv-file-item">
+										<span className="conv-file-name">{file.name}</span>
+										<span className="conv-file-size">{formatBytes(file.size)}</span>
+									</div>
+								))}
+							</div>
+						</div>
+					)}
+
+					{/* Image Options */}
+					{mode === "image" && files.length > 0 && (
+						<div className="conv-section conv-options">
+							<label className="conv-label">Output Options:</label>
+
+							<div className="conv-option-row">
+								<label>Format:</label>
+								<select value={imageFormat} onChange={(e) => setImageFormat(e.target.value as any)}>
+									<option value="png">PNG (lossless)</option>
+									<option value="jpeg">JPEG (lossy)</option>
+									<option value="webp">WebP (modern)</option>
+								</select>
+							</div>
+
+							{(imageFormat === "jpeg" || imageFormat === "webp") && (
+								<div className="conv-option-row">
+									<label>Quality: {imageQuality}%</label>
+									<input
+										type="range"
+										min="10"
+										max="100"
+										value={imageQuality}
+										onChange={(e) => setImageQuality(parseInt(e.target.value, 10))}
+									/>
+								</div>
+							)}
+
+							<div className="conv-option-row">
+								<label>Max Width:</label>
+								<input
+									type="number"
+									placeholder="No limit"
+									value={maxWidth}
+									onChange={(e) => setMaxWidth(e.target.value ? parseInt(e.target.value, 10) : "")}
+								/>
+							</div>
+
+							<div className="conv-option-row">
+								<label>Max Height:</label>
+								<input
+									type="number"
+									placeholder="No limit"
+									value={maxHeight}
+									onChange={(e) => setMaxHeight(e.target.value ? parseInt(e.target.value, 10) : "")}
+								/>
+							</div>
+						</div>
+					)}
+
+					{/* Actions */}
+					<div className="conv-actions">
+						<button
+							className="conv-btn conv-btn-primary"
+							onClick={handleConvert}
+							disabled={converting || files.length === 0}
+						>
+							{converting ? "Converting..." : `Convert ${files.length} File${files.length !== 1 ? "s" : ""}`}
+						</button>
+						<button className="conv-btn conv-btn-secondary" onClick={handleClear} disabled={converting}>
+							Clear
+						</button>
+					</div>
+
+					{/* Messages */}
+					{error && <div className="conv-message conv-error">❌ {error}</div>}
+					{success && <div className="conv-message conv-success">✅ {success}</div>}
+
+					{/* Results */}
+					{results.length > 0 && (
+						<div className="conv-section conv-results">
+							<label className="conv-label">Results:</label>
+							<div className="conv-results-list">
+								{results.map((result, i) => (
+									<div key={i} className={`conv-result-item ${result.success ? "success" : "error"}`}>
+										{"filename" in result && <div className="conv-result-name">{result.filename}</div>}
+
+										{result.success ? (
+											<div className="conv-result-details">
+												<span>
+													{formatBytes(result.originalSize)} → {formatBytes(result.convertedSize || 0)}
+												</span>
+												{"width" in result && result.width && (
+													<span>
+														{result.width}×{result.height}px
+													</span>
+												)}
+											</div>
+										) : (
+											<div className="conv-result-error">{result.error}</div>
+										)}
+
+										{result.success && (
+											<div className="conv-result-actions">
+												<button className="conv-btn-small" onClick={() => handleDownload(result)}>
+													💾 Download
+												</button>
+												{mode === "text" && "markdown" in result && (
+													<button
+														className="conv-btn-small conv-btn-knowledge"
+														onClick={() => handleIngestToKnowledge(result as ConversionResult)}
+													>
+														🧠 Add to Knowledge
+													</button>
+												)}
+											</div>
+										)}
+									</div>
+								))}
+							</div>
+						</div>
+					)}
+				</div>
+
+				<style jsx>{`
           .converter-overlay {
             position: fixed;
             top: 0;
@@ -683,7 +680,7 @@ export default function FileConverter({ isOpen, onClose }: FileConverterProps) {
             background: rgba(255, 193, 7, 0.2);
           }
         `}</style>
-      </div>
-    </div>
-  );
+			</div>
+		</div>
+	);
 }

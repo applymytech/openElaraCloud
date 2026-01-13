@@ -1,11 +1,11 @@
 /**
  * Error Monitoring Setup
- * 
+ *
  * This file contains configuration for error monitoring services.
  * Uncomment and configure your preferred service.
  */
 
-import React from 'react';
+import React from "react";
 
 // ============================================================================
 // SENTRY CONFIGURATION (Recommended - Free tier available)
@@ -143,56 +143,59 @@ export function logError(error: Error, context?: Record<string, any>) {
 // ============================================================================
 
 export function initErrorMonitoring() {
-  if (typeof window === 'undefined') return;
-  
-  // Set up global error handler
-  window.addEventListener('error', (event) => {
-    if (process.env.NODE_ENV === 'production') {
-      // In production, log to console in structured format
-      // You can send this to your own logging service
-      logError(event.error, {
-        message: event.message,
-        filename: event.filename,
-        lineno: event.lineno,
-        colno: event.colno,
-      });
-    }
-  });
-  
-  window.addEventListener('unhandledrejection', (event) => {
-    if (process.env.NODE_ENV === 'production') {
-      logError(new Error(`Unhandled Promise Rejection: ${event.reason}`), {
-        reason: event.reason,
-      });
-    }
-  });
+	if (typeof window === "undefined") {
+		return;
+	}
+
+	// Set up global error handler
+	window.addEventListener("error", (event) => {
+		if (process.env.NODE_ENV === "production") {
+			// In production, log to console in structured format
+			// You can send this to your own logging service
+			logError(event.error, {
+				message: event.message,
+				filename: event.filename,
+				lineno: event.lineno,
+				colno: event.colno,
+			});
+		}
+	});
+
+	window.addEventListener("unhandledrejection", (event) => {
+		if (process.env.NODE_ENV === "production") {
+			logError(new Error(`Unhandled Promise Rejection: ${event.reason}`), {
+				reason: event.reason,
+			});
+		}
+	});
 }
 
 export function logError(error: Error, context?: Record<string, any>) {
-  if (process.env.NODE_ENV === 'production') {
-    // Structured error log that can be collected by monitoring tools
-    const errorLog = {
-      timestamp: new Date().toISOString(),
-      error: {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
-      },
-      context,
-      userAgent: navigator.userAgent,
-      url: window.location.href,
-    };
-    
-    // Log to console (can be collected by Firebase Monitoring or other tools)
-    window.console.error('[Error Monitor]', JSON.stringify(errorLog, null, 2));
-    
-    // TODO: Send to your backend or logging service
-    // fetch('/api/log-error', { method: 'POST', body: JSON.stringify(errorLog) });
-  } else {
-    // Development: full error to console
-    window.console.error('[Dev Error]', error, context);
-  }
+	if (process.env.NODE_ENV === "production") {
+		// Structured error log that can be collected by monitoring tools
+		const errorLog = {
+			timestamp: new Date().toISOString(),
+			error: {
+				name: error.name,
+				message: error.message,
+				stack: error.stack,
+			},
+			context,
+			userAgent: navigator.userAgent,
+			url: window.location.href,
+		};
+
+		// Log to console (can be collected by Firebase Monitoring or other tools)
+		window.console.error("[Error Monitor]", JSON.stringify(errorLog, null, 2));
+
+		// TODO: Send to your backend or logging service
+		// fetch('/api/log-error', { method: 'POST', body: JSON.stringify(errorLog) });
+	} else {
+		// Development: full error to console
+		window.console.error("[Dev Error]", error, context);
+	}
 }
 
 // No-op boundary for fallback
-export const ErrorBoundary = ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children);
+export const ErrorBoundary = ({ children }: { children: React.ReactNode }) =>
+	React.createElement(React.Fragment, null, children);

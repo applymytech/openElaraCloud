@@ -1,1444 +1,1488 @@
 /**
  * Chat Page - Main Elara Chat Interface
- * 
+ *
  * Gorgeous Nexus-themed chat with character system, selfies, TTS, and more!
  */
 
-import { chat, ChatMessage, isBYOKMode } from "@/lib/api";
-import { auth, db } from "@/lib/firebase";
-import ELARA, { getRandomGreeting, getErrorResponse } from "@/lib/elara";
-import { getDefaultChatModel, setSelectedModel, CHAT_MODEL_METADATA, getChatModels, type Model } from "@/lib/models";
-import { getActiveCharacter, Character } from "@/lib/characters";
-import ModelSelector from "@/components/ModelSelector";
-import { getMoodTracker, resetMoodTracker, MoodTracker } from "@/lib/mood";
-import { buildChatSystemPrompt, buildContextPrefix } from "@/lib/promptBuilder";
-import { executeCouncilMode, type CouncilResult } from "@/lib/councilMode";
-import { buildRAGContext, ingestConversation } from "@/lib/rag";
-import { 
-  loadContextCanvas, 
-  buildFullCanvasContext, 
-  getCanvasStats,
-  getTokenStats,
-} from "@/lib/contextCanvas";
-import { downloadWithMetadata, type SignedContent } from "@/lib/signing";
-import { type GeneratedImage } from "@/lib/mediaGeneration";
-import { 
-  isSTTSupported, 
-  startRecording, 
-  stopRecording, 
-  cancelRecording, 
-  transcribeAudio, 
-  getRecordingState 
-} from "@/lib/stt";
-import { getTrialStatus } from "@/lib/trial";
+import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { onAuthStateChanged, signOut, User } from "firebase/auth";
+import dynamic from "next/dynamic";
+import Image from "next/image";
 import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
-import dynamic from 'next/dynamic';
+import ModelSelector from "@/components/ModelSelector";
+import { type ChatMessage, chat, isBYOKMode } from "@/lib/api";
+import { type Character, getActiveCharacter } from "@/lib/characters";
+import { buildFullCanvasContext, getTokenStats, loadContextCanvas } from "@/lib/contextCanvas";
+import { executeCouncilMode } from "@/lib/councilMode";
+import ELARA, { getErrorResponse } from "@/lib/elara";
+import { auth, db } from "@/lib/firebase";
+import type { GeneratedImage } from "@/lib/mediaGeneration";
+import { getChatModels, getDefaultChatModel, type Model, setSelectedModel } from "@/lib/models";
+import { getMoodTracker, type MoodTracker, resetMoodTracker } from "@/lib/mood";
+import { buildChatSystemPrompt, buildContextPrefix } from "@/lib/promptBuilder";
+import { buildRAGContext, ingestConversation } from "@/lib/rag";
+import { downloadWithMetadata, type SignedContent } from "@/lib/signing";
+import { cancelRecording, isSTTSupported, startRecording, stopRecording, transcribeAudio } from "@/lib/stt";
 
 // Dynamically import components (avoids SSR issues with localStorage)
-const TrialBanner = dynamic(() => import('@/components/TrialBanner'), { ssr: false });
-const ImageGenPanel = dynamic(() => import('@/components/ImageGenPanel'), { ssr: false });
-const VideoGenPanel = dynamic(() => import('@/components/VideoGenPanel'), { ssr: false });
-const CharacterEditor = dynamic(() => import('@/components/CharacterEditor'), { ssr: false });
-const PersonaPanel = dynamic(() => import('@/components/PersonaPanel'), { ssr: false });
-const PromptManager = dynamic(() => import('@/components/PromptManager'), { ssr: false });
-const KnowledgePanel = dynamic(() => import('@/components/KnowledgePanel'), { ssr: false });
-const StorageManager = dynamic(() => import('@/components/StorageManager'), { ssr: false });
-const PowerKnowledge = dynamic(() => import('@/components/PowerKnowledge'), { ssr: false });
-const FileConverter = dynamic(() => import('@/components/FileConverter'), { ssr: false });
-const MessageContent = dynamic(() => import('@/components/MessageContent'), { ssr: false });
-const ContextCanvas = dynamic(() => import('@/components/ContextCanvas'), { ssr: false });
+const TrialBanner = dynamic(() => import("@/components/TrialBanner"), { ssr: false });
+const ImageGenPanel = dynamic(() => import("@/components/ImageGenPanel"), { ssr: false });
+const VideoGenPanel = dynamic(() => import("@/components/VideoGenPanel"), { ssr: false });
+const _CharacterEditor = dynamic(() => import("@/components/CharacterEditor"), { ssr: false });
+const PersonaPanel = dynamic(() => import("@/components/PersonaPanel"), { ssr: false });
+const PromptManager = dynamic(() => import("@/components/PromptManager"), { ssr: false });
+const KnowledgePanel = dynamic(() => import("@/components/KnowledgePanel"), { ssr: false });
+const StorageManager = dynamic(() => import("@/components/StorageManager"), { ssr: false });
+const PowerKnowledge = dynamic(() => import("@/components/PowerKnowledge"), { ssr: false });
+const FileConverter = dynamic(() => import("@/components/FileConverter"), { ssr: false });
+const MessageContent = dynamic(() => import("@/components/MessageContent"), { ssr: false });
+const ContextCanvas = dynamic(() => import("@/components/ContextCanvas"), { ssr: false });
 
 // Extended message type to support images and thinking
 interface ChatMessageWithMedia extends ChatMessage {
-  image?: {
-    dataUrl: string;
-    signedContent: SignedContent;
-    prompt: string;
-  };
-  video?: {
-    url: string;
-    prompt: string;
-  };
-  thinking?: string;  // AI's reasoning (shown in collapsible)
+	image?: {
+		dataUrl: string;
+		signedContent: SignedContent;
+		prompt: string;
+	};
+	video?: {
+		url: string;
+		prompt: string;
+	};
+	thinking?: string; // AI's reasoning (shown in collapsible)
 }
 
 export default function Chat() {
-  const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [messages, setMessages] = useState<ChatMessageWithMedia[]>([]);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const [byokMode, setByokMode] = useState(false);
-  const [character, setCharacter] = useState<Character | null>(null);
-  const [currentModel, setCurrentModel] = useState<string>('');
-  const [availableChatModels, setAvailableChatModels] = useState<Model[]>([]);
-  const [showModelSelector, setShowModelSelector] = useState(false);
-  const [showImageGen, setShowImageGen] = useState(false);
-  const [showVideoGen, setShowVideoGen] = useState(false);
-  const [showCharacterEditor, setShowCharacterEditor] = useState(false);
-  const [showPersonaPanel, setShowPersonaPanel] = useState(false);
-  const [showFileMenu, setShowFileMenu] = useState(false);
-  const [showOutputMenu, setShowOutputMenu] = useState(false);
-  const [showDisclaimer, setShowDisclaimer] = useState(false);
-  const [showPromptManager, setShowPromptManager] = useState(false);
-  const [showKnowledgePanel, setShowKnowledgePanel] = useState(false);
-  const [showStorageManager, setShowStorageManager] = useState(false);
-  const [showPowerKnowledge, setShowPowerKnowledge] = useState(false);
-  const [showFileConverter, setShowFileConverter] = useState(false);
-  const [showContextCanvas, setShowContextCanvas] = useState(false);
-  const [canvasTokenCount, setCanvasTokenCount] = useState(0);
-  const [ctrlEnterSend, setCtrlEnterSend] = useState(true);
-  const [deepThoughtEnabled, setDeepThoughtEnabled] = useState(false);
-  const [deepThoughtTurns, setDeepThoughtTurns] = useState(10);
-  const [moodEmoji, setMoodEmoji] = useState('😊');
-  const [moodText, setMoodText] = useState('good, engaged');
-  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const [transcribing, setTranscribing] = useState(false);
-  const [userDisplayName, setUserDisplayName] = useState<string>('User');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-      setLoading(false);
-      if (!user) {
-        router.push("/");
-      } else {
-        // Load display name from Firestore profile
-        try {
-          const userRef = doc(db, "users", user.uid);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            const profile = userSnap.data();
-            setUserDisplayName(profile.displayName || user.email?.split('@')[0] || 'User');
-          } else {
-            setUserDisplayName(user.email?.split('@')[0] || 'User');
-          }
-        } catch (err) {
-          console.warn('Failed to load user profile:', err);
-          setUserDisplayName(user.email?.split('@')[0] || 'User');
-        }
-      }
-    });
-    
-    // Check BYOK mode
-    setByokMode(isBYOKMode());
-    
-    // Load active character
-    setCharacter(getActiveCharacter());
-    
-    // Load current model selection
-    setCurrentModel(getDefaultChatModel());
-    
-    // Load available chat models from API
-    getChatModels().then(models => {
-      if (models.length > 0) {
-        setAvailableChatModels(models);
-      }
-    }).catch(err => console.warn('Failed to load chat models:', err));
-    
-    // Load Context Canvas state
-    loadContextCanvas().then(() => {
-      const stats = getTokenStats();
-      setCanvasTokenCount(stats.usedTokens);
-    }).catch(err => console.warn('Failed to load context canvas:', err));
-    
-    // Check AI disclaimer
-    if (typeof window !== 'undefined') {
-      const accepted = localStorage.getItem('openelara_ai_disclaimer_accepted');
-      if (!accepted) {
-        setShowDisclaimer(true);
-      }
-      // Load ctrl+enter preference
-      const ctrlEnterPref = localStorage.getItem('openelara_ctrl_enter_send');
-      if (ctrlEnterPref !== null) {
-        setCtrlEnterSend(ctrlEnterPref === 'true');
-      }
-    }
-    
-    return () => unsubscribe();
-  }, [router]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // Update mood display when messages change
-  useEffect(() => {
-    const tracker = getMoodTracker();
-    updateMoodDisplay(tracker);
-  }, [messages, character]);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px';
-    }
-  }, [input]);
-
-  // Get short display name for a model
-  const getModelDisplayName = (modelId: string): string => {
-    // Check if we have metadata with a display name
-    const meta = CHAT_MODEL_METADATA[modelId];
-    if (meta?.displayName) {
-      return meta.displayName;
-    }
-    // Fallback: extract readable name from model ID
-    // e.g., "meta-llama/Llama-3.3-70B-Instruct-Turbo" → "Llama 3.3 70B"
-    const parts = modelId.split('/');
-    const name = parts[parts.length - 1];
-    return name
-      .replace(/-Instruct|-Turbo|-Free|-Chat/gi, '')
-      .replace(/-/g, ' ')
-      .trim();
-  };
-
-  const handleSignOut = async () => {
-    await signOut(auth);
-    router.push("/");
-  };
-
-  // Mood display helper
-  const updateMoodDisplay = (tracker: MoodTracker) => {
-    const mood = tracker.getMood();
-    const description = tracker.getMoodDescription();
-    
-    // Map mood to emoji
-    let emoji = '😊';
-    if (mood >= 85) emoji = '🥰';
-    else if (mood >= 70) emoji = '😄';
-    else if (mood >= 55) emoji = '😊';
-    else if (mood >= 45) emoji = '😐';
-    else if (mood >= 35) emoji = '😔';
-    else if (mood >= 20) emoji = '😢';
-    else emoji = '😰';
-    
-    setMoodEmoji(emoji);
-    setMoodText(description);
-  };
-
-  const handleResetMood = () => {
-    resetMoodTracker();
-    const tracker = getMoodTracker();
-    updateMoodDisplay(tracker);
-  };
-
-  const handleAcceptDisclaimer = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('openelara_ai_disclaimer_accepted', new Date().toISOString());
-    }
-    setShowDisclaimer(false);
-  };
-
-  const handleExportChat = () => {
-    const chatExport = {
-      character: charName,
-      exportedAt: new Date().toISOString(),
-      messages: messages.map(m => ({
-        role: m.role,
-        content: typeof m.content === 'string' ? m.content : m.content.find(p => p.type === 'text')?.text || '',
-      })),
-    };
-    
-    const blob = new Blob([JSON.stringify(chatExport, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${charName}_chat_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setShowFileMenu(false);
-  };
-
-  const handleClearHistory = () => {
-    if (confirm('Clear all messages? This cannot be undone.')) {
-      setMessages([]);
-      resetMoodTracker();
-      updateMoodDisplay(getMoodTracker());
-      setShowFileMenu(false);
-    }
-  };
-
-  const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      setAttachedFiles(prev => [...prev, ...Array.from(files)]);
-    }
-  };
-
-  const handleRemoveFile = (index: number) => {
-    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
-  // ============================================================================
-  // VOICE INPUT (STT) HANDLERS
-  // ============================================================================
-
-  const handleVoiceToggle = async () => {
-    if (isRecording) {
-      // Stop recording and transcribe
-      setIsRecording(false);
-      setTranscribing(true);
-      
-      try {
-        const stopResult = await stopRecording();
-        if (!stopResult.success || !stopResult.audioBlob) {
-          console.error('[Voice] Failed to stop recording:', stopResult.error);
-          return;
-        }
-        
-        // Transcribe the audio
-        const transcribeResult = await transcribeAudio(stopResult.audioBlob);
-        if (transcribeResult.success && transcribeResult.text) {
-          // Append transcribed text to input
-          setInput(prev => prev ? `${prev} ${transcribeResult.text}` : transcribeResult.text || '');
-          textareaRef.current?.focus();
-        } else {
-          console.error('[Voice] Transcription failed:', transcribeResult.error);
-          // Could show error toast here
-        }
-      } catch (e: any) {
-        console.error('[Voice] Error:', e);
-      } finally {
-        setTranscribing(false);
-      }
-    } else {
-      // Start recording
-      const startResult = await startRecording();
-      if (startResult.success) {
-        setIsRecording(true);
-      } else {
-        console.error('[Voice] Failed to start recording:', startResult.error);
-        // Could show error toast here
-      }
-    }
-  };
-
-  const handleVoiceCancel = () => {
-    cancelRecording();
-    setIsRecording(false);
-    setTranscribing(false);
-  };
-
-  const handleCtrlEnterToggle = (checked: boolean) => {
-    setCtrlEnterSend(checked);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('openelara_ctrl_enter_send', String(checked));
-    }
-  };
-
-  /**
-   * Detect if user is requesting a selfie or video from the AI character
-   * Must be explicit requests like "send me a pic" or "send me a video"
-   */
-  const detectMediaRequest = (text: string): 'selfie' | 'video' | null => {
-    const normalized = text.toLowerCase().trim();
-    
-    // Selfie patterns - must be explicit requests
-    const selfiePatterns = [
-      /send\s+(?:me\s+)?(?:a\s+)?(?:pic|picture|photo|selfie|image)/i,
-      /(?:take|snap|get)\s+(?:me\s+)?(?:a\s+)?(?:pic|picture|photo|selfie)/i,
-      /(?:can\s+(?:i\s+)?(?:get|have|see)\s+)?(?:a\s+)?(?:pic|picture|photo|selfie)\s+(?:of\s+)?(?:you|yourself)/i,
-      /show\s+me\s+(?:a\s+)?(?:pic|picture|photo|selfie)/i,
-      /(?:want|like)\s+(?:to\s+)?(?:see\s+)?(?:a\s+)?(?:pic|picture|photo|selfie)\s+(?:of\s+)?you/i,
-    ];
-    
-    // Video patterns - must be explicit requests
-    const videoPatterns = [
-      /send\s+(?:me\s+)?(?:a\s+)?video/i,
-      /(?:take|record|make|get)\s+(?:me\s+)?(?:a\s+)?video/i,
-      /(?:can\s+(?:i\s+)?(?:get|have|see)\s+)?(?:a\s+)?video\s+(?:of\s+)?(?:you|yourself)/i,
-      /show\s+me\s+(?:a\s+)?video/i,
-      /(?:want|like)\s+(?:to\s+)?(?:see\s+)?(?:a\s+)?video\s+(?:of\s+)?you/i,
-    ];
-    
-    for (const pattern of selfiePatterns) {
-      if (pattern.test(normalized)) {
-        return 'selfie';
-      }
-    }
-    
-    for (const pattern of videoPatterns) {
-      if (pattern.test(normalized)) {
-        return 'video';
-      }
-    }
-    
-    return null;
-  };
-
-  const handleSend = async () => {
-    if (!input.trim() || sending) return;
-
-    const userMessage: ChatMessage = { role: "user", content: input.trim() };
-    setMessages((prev) => [...prev, userMessage]);
-    const currentInput = input.trim();
-    setInput("");
-    setSending(true);
-    
-    // Capture and clear attached files
-    const filesToProcess = [...attachedFiles];
-    setAttachedFiles([]);
-
-    // Check for Council Mode trigger
-    const isCouncilMode = currentInput.toLowerCase().startsWith('[council mode]') ||
-                          currentInput.toLowerCase().startsWith('[council]');
-    
-    // Check for media request (selfie/video) - LLM tool invocation
-    const mediaRequest = detectMediaRequest(currentInput);
-
-    try {
-      // Get mood tracker and update from user message
-      const moodTracker = getMoodTracker();
-      // Content is always string for user messages in this context
-      const messageText = typeof userMessage.content === 'string' 
-        ? userMessage.content 
-        : userMessage.content.find(p => p.type === 'text')?.text || '';
-      moodTracker.updateFromUserMessage(messageText);
-      
-      // Get active character
-      const activeChar = character || getActiveCharacter();
-
-      // ================== COUNCIL MODE ==================
-      if (isCouncilMode) {
-        // Strip the council mode prefix from the question
-        const question = currentInput
-          .replace(/^\[council\s*mode\]\s*/i, '')
-          .replace(/^\[council\]\s*/i, '')
-          .trim() || 'What are your thoughts?';
-
-        try {
-          const councilResult = await executeCouncilMode({
-            userQuestion: question,
-            conversationHistory: messages,
-          });
-
-          // Build a rich response with perspectives
-          let councilResponse = '';
-          
-          if (councilResult.perspectives.length > 0) {
-            councilResponse += '🏛️ **Council of Wisdom Perspectives:**\n\n';
-            for (const p of councilResult.perspectives) {
-              if (p.success) {
-                councilResponse += `**${p.persona}** _(${p.role})_:\n${p.answer}\n\n`;
-              }
-            }
-            councilResponse += '---\n\n';
-            councilResponse += `**${councilResult.leadConsultant}'s Synthesis:**\n${councilResult.synthesis}`;
-          } else {
-            councilResponse = councilResult.synthesis || 'The council could not reach a consensus.';
-          }
-
-          const assistantMessage: ChatMessageWithMedia = {
-            role: "assistant",
-            content: councilResponse,
-            thinking: councilResult.thinking,
-          };
-
-          setMessages((prev) => [...prev, assistantMessage]);
-        } catch (e) {
-          console.error('[Council Mode] Error:', e);
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: "The Council of Wisdom is unavailable at the moment. Please try again." },
-          ]);
-        }
-        
-        setSending(false);
-        return; // Exit early - council mode handled
-      }
-
-      // ================== MEDIA REQUEST (SELFIE/VIDEO) ==================
-      if (mediaRequest) {
-        // User requested a selfie or video through natural language
-        // Show an acknowledgment message, then autonomously generate
-        const mediaAck: ChatMessageWithMedia = {
-          role: "assistant",
-          content: mediaRequest === 'selfie'
-            ? `📸 Sure! Let me take a selfie for you...`
-            : `🎬 Of course! Let me create a video for you...`,
-        };
-        setMessages((prev) => [...prev, mediaAck]);
-        
-        // Autonomously generate without modal
-        if (mediaRequest === 'selfie') {
-          // Generate agentic selfie autonomously
-          (async () => {
-            try {
-              const { generateAgenticSelfie } = await import('../lib/mediaGeneration');
-              const { getMoodState } = await import('../lib/mood');
-              const { storeMedia } = await import('../lib/storage');
-              
-              const moodState = getMoodState(activeChar.id);
-              const firstRecommended = Object.entries((await import('../lib/mediaGeneration')).IMAGE_MODELS)
-                .find(([_, config]) => config.recommended)?.[0] || 'black-forest-labs/FLUX.1-schnell';
-              
-              const agenticResult = await generateAgenticSelfie({
-                sceneSuggestion: undefined, // Let AI decide based on mood/context
-                model: firstRecommended,
-                character: activeChar,
-                moodState,
-                conversationContext: messages.slice(-5).map(m => 
-                  `${m.role}: ${typeof m.content === 'string' ? m.content : '[attachment]'}`
-                ).join('\n'),
-              });
-              
-              // Auto-store to cloud
-              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-              const filename = `${activeChar.name}_selfie_${timestamp}.png`;
-              
-              try {
-                await storeMedia(agenticResult.image.signedContent, filename, 'image/png');
-              } catch (storageError) {
-                console.warn('Could not store to cloud (continuing):', storageError);
-              }
-              
-              // Add image to chat
-              const imageMsg: ChatMessageWithMedia = {
-                role: 'assistant',
-                content: `📸 ${agenticResult.aiSceneDecision}\n\nHere's my selfie! Click to download.`,
-                image: {
-                  dataUrl: agenticResult.image.signedContent.dataUrl,
-                  signedContent: agenticResult.image.signedContent,
-                  prompt: agenticResult.image.prompt,
-                },
-              };
-              setMessages(prev => [...prev, imageMsg]);
-            } catch (error: any) {
-              const errorMsg: ChatMessageWithMedia = {
-                role: 'assistant',
-                content: `❌ Sorry, I couldn't take a selfie: ${error.message}`,
-              };
-              setMessages(prev => [...prev, errorMsg]);
-            } finally {
-              setSending(false);
-            }
-          })();
-        } else {
-          // Video: autonomous generation with progress updates
-          (async () => {
-            try {
-              const { generateAgenticVideo } = await import('../lib/mediaGeneration');
-              const { getDefaultVideoModel } = await import('../lib/models');
-              const { getMoodState } = await import('../lib/mood');
-              const { storeMedia } = await import('../lib/storage');
-              
-              const moodState = getMoodState(activeChar.id);
-              const defaultModel = getDefaultVideoModel();
-              
-              // Add progress message
-              const progressMsg: ChatMessageWithMedia = {
-                role: 'assistant',
-                content: '🎬 Creating your video... This may take a few minutes.',
-              };
-              setMessages(prev => [...prev, progressMsg]);
-              
-              const agenticResult = await generateAgenticVideo({
-                sceneSuggestion: undefined, // Let AI decide based on mood/context
-                model: defaultModel,
-                duration: 5, // Default 5 seconds
-                character: activeChar,
-                moodState,
-                conversationContext: messages.slice(-5).map(m => 
-                  `${m.role}: ${typeof m.content === 'string' ? m.content : '[attachment]'}`
-                ).join('\n'),
-                onProgress: (status: string, attempt: number) => {
-                  console.log(`[Video Gen] ${status} (${attempt})`);
-                },
-              });
-              
-              // Auto-store to cloud (non-blocking) - skip for videos since URL is already hosted
-              // Videos from Together.ai don't need storage - the URL is permanent
-              
-              // Add video to chat
-              const videoMsg: ChatMessageWithMedia = {
-                role: 'assistant',
-                content: `🎬 ${agenticResult.aiSceneDecision}\n\nHere's my video! Right-click to download.`,
-                video: {
-                  url: agenticResult.video.url,
-                  prompt: agenticResult.video.prompt,
-                },
-              };
-              setMessages(prev => [...prev, videoMsg]);
-            } catch (error: any) {
-              const errorMsg: ChatMessageWithMedia = {
-                role: 'assistant',
-                content: `❌ Sorry, I couldn't create a video: ${error.message}`,
-              };
-              setMessages(prev => [...prev, errorMsg]);
-            } finally {
-              setSending(false);
-            }
-          })();
-        }
-        
-        return; // Exit early - media request handled
-      }
-
-      // ================== REGULAR CHAT ==================
-      // Build structured system prompt (from desktop promptConstants.js)
-      
-      // Get emotional context from mood tracker
-      const moodContext = moodTracker.getPromptContext();
-      
-      const systemPrompt = buildChatSystemPrompt({
-        userName: userDisplayName,
-        character: activeChar,
-        emotionalContext: moodContext || null,
-        outputTokenLimit: 2048, // Default token limit
-      });
-      
-      // RAG: Search for relevant context from memories/knowledge
-      let ragContext: string | null = null;
-      try {
-        ragContext = await buildRAGContext(messageText);
-      } catch (e) {
-        console.warn('[Chat] RAG search failed (continuing without context):', e);
-      }
-      
-      // Process attached files - read content and prepare for context
-      const processedFiles: Array<{ filename: string; content: string }> = [];
-      for (const file of filesToProcess) {
-        try {
-          const content = await file.text();
-          // Truncate very large files (max 50KB per file)
-          const truncated = content.length > 50000 
-            ? content.substring(0, 50000) + '\n... [File truncated - too large]'
-            : content;
-          processedFiles.push({ filename: file.name, content: truncated });
-        } catch (e) {
-          console.warn(`[Chat] Failed to read file ${file.name}:`, e);
-        }
-      }
-      
-      // Build Context Canvas content (persistent documents with ZERO truncation)
-      let canvasContext = '';
-      try {
-        await loadContextCanvas();
-        const canvasResult = buildFullCanvasContext();
-        if (canvasResult.fileCount > 0) {
-          canvasContext = canvasResult.content;
-          setCanvasTokenCount(canvasResult.tokenCount);
-          console.log(`[Chat] Context Canvas: ${canvasResult.fileCount} files, ~${canvasResult.tokenCount} tokens`);
-        }
-      } catch (e) {
-        console.warn('[Chat] Context Canvas load failed (continuing without):', e);
-      }
-      
-      // ================== DEEP THOUGHT MODE ==================
-      if (deepThoughtEnabled) {
-        try {
-          // Use Deep Thought engine for multi-turn agentic reasoning
-          const { executeDeepThought } = await import('../lib/deepThought');
-          
-          // Show thinking indicator
-          const thinkingMessage: ChatMessageWithMedia = {
-            role: "assistant",
-            content: "🧠 _Engaging Deep Thought mode... (analyzing with multiple reasoning turns)_",
-          };
-          setMessages((prev) => [...prev, thinkingMessage]);
-          
-          const deepThoughtResult = await executeDeepThought(messageText, {
-            maxTurns: deepThoughtTurns,
-            systemPrompt,
-          });
-          
-          // Replace thinking message with final result
-          setMessages((prev) => {
-            const withoutThinking = prev.slice(0, -1);
-            return [...withoutThinking, {
-              role: "assistant",
-              content: deepThoughtResult.finalResponse,
-              thinking: deepThoughtResult.thinkingProcess,
-            }];
-          });
-          
-          setSending(false);
-          return; // Exit early - Deep Thought handled
-        } catch (e) {
-          console.error('[Deep Thought] Error:', e);
-          setMessages((prev) => {
-            const withoutThinking = prev.filter(m => {
-              const content = typeof m.content === 'string' ? m.content : '';
-              return !content.includes('Engaging Deep Thought');
-            });
-            return [...withoutThinking, {
-              role: "assistant",
-              content: "⚠️ Deep Thought mode encountered an error. Falling back to regular chat...",
-            }];
-          });
-          // Fall through to regular chat on error
-        }
-      }
-      
-      // Build the enriched user message with Context Canvas + RAG context + attached files
-      const contextPrefix = buildContextPrefix({ 
-        ragContext,
-        attachedFiles: processedFiles.length > 0 ? processedFiles : undefined,
-      });
-      
-      // Combine: Canvas (persistent) + Context Prefix (RAG + attachments) + User Message
-      const fullContext = canvasContext + contextPrefix;
-      const enrichedContent = fullContext 
-        ? fullContext + messageText 
-        : messageText;
-      
-      const enrichedUserMessage: ChatMessage = { 
-        role: "user", 
-        content: enrichedContent 
-      };
-      
-      const response = await chat([
-        { role: "system", content: systemPrompt },
-        ...messages,
-        enrichedUserMessage,
-      ]);
-
-      const assistantMessage: ChatMessageWithMedia = {
-        role: "assistant",
-        content: response.choices[0]?.message?.content || getErrorResponse('unknown'),
-        thinking: response.choices[0]?.message?.thinking,  // Capture AI's reasoning
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-      
-      // RAG: Auto-ingest conversation for memory (async, non-blocking)
-      // This allows the AI to remember past conversations
-      const updatedMessages = [...messages, userMessage, assistantMessage];
-      if (updatedMessages.length >= 4) { // Only ingest after a few exchanges
-        const conversationId = `chat_${user?.uid}_${Date.now()}`;
-        ingestConversation(
-          conversationId,
-          updatedMessages.map(m => ({
-            role: m.role as 'user' | 'assistant' | 'system',
-            content: typeof m.content === 'string' ? m.content : '[attachment]',
-            timestamp: new Date(),
-          })),
-          `Chat with ${activeChar.name} - ${new Date().toLocaleDateString()}`
-        ).catch(e => console.warn('[Chat] Memory ingestion failed:', e));
-      }
-    } catch (e: any) {
-      let errorType: 'network' | 'api' | 'limit' | 'unknown' = 'unknown';
-      if (e.message?.includes('network') || e.message?.includes('fetch')) {
-        errorType = 'network';
-      } else if (e.message?.includes('rate') || e.message?.includes('limit')) {
-        errorType = 'limit';
-      } else if (e.message?.includes('API') || e.message?.includes('key')) {
-        errorType = 'api';
-      }
-      
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: getErrorResponse(errorType) },
-      ]);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (ctrlEnterSend) {
-      // Ctrl+Enter to send
-      if (e.key === "Enter" && e.ctrlKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    } else {
-      // Enter to send (Shift+Enter for newline)
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    }
-  };
-
-  const handleNewChat = () => {
-    setMessages([]);
-  };
-
-  const handleCharacterChange = (char: Character) => {
-    setCharacter(char);
-    setShowCharacterEditor(false);
-    // Reset chat and mood tracker when character changes
-    setMessages([]);
-    resetMoodTracker();
-  };
-
-  const handlePromptSelect = (prompt: { content: string | object; type: string }) => {
-    // Insert prompt content into chat input
-    const content = typeof prompt.content === 'string' 
-      ? prompt.content 
-      : JSON.stringify(prompt.content);
-    
-    if (prompt.type === 'chat') {
-      setInput(content);
-      textareaRef.current?.focus();
-    } else if (prompt.type === 'image') {
-      // For image prompts, open the image generator with the prompt
-      setShowImageGen(true);
-      // TODO: Pass prompt to ImageGenPanel
-    } else if (prompt.type === 'video') {
-      setShowVideoGen(true);
-      // TODO: Pass prompt to VideoGenPanel
-    }
-  };
-
-  const handlePowerKnowledgeResult = (content: string) => {
-    // Insert web research results into chat as context and prepare for analysis
-    const contextMsg: ChatMessageWithMedia = {
-      role: 'user',
-      content: `[Web Research Context]\n\n${content}\n\n---\nPlease analyze or summarize this information.`,
-    };
-    setMessages(prev => [...prev, contextMsg]);
-    
-    // Set input for user to optionally modify and send
-    setInput('Based on the web research above, please provide a helpful analysis or summary.');
-    textareaRef.current?.focus();
-  };
-
-  const handleImageGenerated = (image: GeneratedImage) => {
-    // Add a message showing the generated image inline
-    const imageMsg: ChatMessageWithMedia = {
-      role: 'assistant',
-      content: `📸 Here's your generated image! Click to download with provenance metadata.`,
-      image: {
-        dataUrl: image.signedContent.dataUrl,
-        signedContent: image.signedContent,
-        prompt: image.prompt,
-      },
-    };
-    setMessages(prev => [...prev, imageMsg]);
-    setShowImageGen(false);
-  };
-
-  const handleDownloadImage = (signedContent: SignedContent, prompt: string) => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const charName = character?.name || 'Elara';
-    const filename = `${charName}_selfie_${timestamp}.png`;
-    downloadWithMetadata(signedContent, filename);
-  };
-
-  // Current character name (fallback to ELARA)
-  const charName = character?.name || ELARA.NAME;
-  const charIconPath = character?.iconPath || '/characters/elara_avatar.png';
-
-  // Helper to render avatar (always uses image - no emoji fallback)
-  const renderAvatar = (size: 'sm' | 'md' | 'lg' = 'md') => {
-    const sizes = {
-      sm: { width: 28, height: 28 },
-      md: { width: 40, height: 40 },
-      lg: { width: 80, height: 80 },
-    };
-    const s = sizes[size];
-    
-    return (
-      <img 
-        src={charIconPath} 
-        alt={charName}
-        className="elara-avatar-img"
-        style={{ width: s.width, height: s.height, borderRadius: '50%', objectFit: 'cover' }}
-      />
-    );
-  };
-
-  if (loading) {
-    return (
-      <div className="center-content">
-        <div className="elara-logo">
-          <img src="/icon.png" alt="OpenElara" className="elara-logo-icon-img" />
-        </div>
-        <div className="nexus-spinner" />
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <TrialBanner />
-      <div className="chat-container">
-        {/* AI Disclaimer Modal */}
-        {showDisclaimer && (
-          <div className="disclaimer-modal">
-            <div className="disclaimer-content">
-              <h2>⚠️ AI Content Disclosure</h2>
-
-              <h3>This Application Generates AI Content</h3>
-              <p>
-                All text, images, video, and audio outputs are produced by <strong>third-party artificial intelligence services</strong>, not by Apply My Tech.
-              </p>
-              <p>
-                OpenElara is a <strong>"Bring Your Own Key" (BYOK) client</strong>—the app provides the interface, but the AI "intelligence" comes from external providers via your own API keys.
-            </p>
-
-            <h3>You Are Responsible For:</h3>
-            <ul>
-              <li>The prompts you submit to AI services</li>
-              <li>Reviewing and verifying AI-generated outputs</li>
-              <li>Understanding that AI content may be inaccurate, biased, or inappropriate</li>
-              <li>Complying with the terms of service of your chosen AI providers</li>
-            </ul>
-
-            <h3>Content Guidelines</h3>
-            <p>
-              This application does <strong>not filter or moderate</strong> AI-generated content. The quality and appropriateness of outputs depend on your prompts and the AI providers you use.
-            </p>
-
-            <div className="disclaimer-accept">
-              <button 
-                className="nexus-btn nexus-btn-primary"
-                onClick={handleAcceptDisclaimer}
-              >
-                I understand this application generates AI content
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Persona Panel (Desktop-style slide-out) */}
-      <PersonaPanel
-        isOpen={showPersonaPanel}
-        onClose={() => setShowPersonaPanel(false)}
-        onCharacterSelected={handleCharacterChange}
-      />
-
-      {/* Prompt Manager Modal */}
-      <PromptManager
-        isOpen={showPromptManager}
-        onClose={() => setShowPromptManager(false)}
-        onSelectPrompt={handlePromptSelect}
-      />
-
-      {/* Knowledge Base Panel */}
-      {showKnowledgePanel && (
-        <div className="modal-overlay" onClick={() => setShowKnowledgePanel(false)}>
-          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
-            <KnowledgePanel onClose={() => setShowKnowledgePanel(false)} />
-          </div>
-        </div>
-      )}
-
-      {/* Storage Manager Panel */}
-      {showStorageManager && (
-        <div className="modal-overlay" onClick={() => setShowStorageManager(false)}>
-          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
-            <StorageManager onClose={() => setShowStorageManager(false)} />
-          </div>
-        </div>
-      )}
-
-      {/* Power Knowledge - Web Search & Research */}
-      <PowerKnowledge
-        isOpen={showPowerKnowledge}
-        onClose={() => setShowPowerKnowledge(false)}
-        onSendToChat={handlePowerKnowledgeResult}
-      />
-
-      {/* File Converter */}
-      <FileConverter
-        isOpen={showFileConverter}
-        onClose={() => setShowFileConverter(false)}
-      />
-
-      {/* Context Canvas - Persistent Documents */}
-      <ContextCanvas
-        isOpen={showContextCanvas}
-        onClose={() => {
-          setShowContextCanvas(false);
-          // Update token count when closing
-          const stats = getTokenStats();
-          setCanvasTokenCount(stats.usedTokens);
-        }}
-      />
-
-      {/* Hidden file input */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        style={{ display: 'none' }} 
-        onChange={handleFileAttach}
-        multiple
-        accept=".txt,.md,.json,.csv,.pdf,.js,.ts,.jsx,.tsx,.py,.html,.css"
-      />
-
-      {/* Nexus Menu Bar */}
-      <div className="nexus-menubar">
-        <div className="menu-left">
-          {/* File Menu */}
-          <div className="menu-item">
-            <button 
-              className="menu-label"
-              onClick={() => setShowFileMenu(!showFileMenu)}
-            >
-              File
-            </button>
-            {showFileMenu && (
-              <div className="menu-dropdown">
-                <button className="menu-option" onClick={() => { handleNewChat(); setShowFileMenu(false); }}>✨ New Chat</button>
-                <button className="menu-option" onClick={handleClearHistory}>🗑️ Clear Chat History</button>
-                <button className="menu-option" onClick={handleExportChat}>💾 Export Chat</button>
-                <button className="menu-option" onClick={() => { setShowContextCanvas(true); setShowFileMenu(false); }}>📌 Context Canvas</button>
-                <button className="menu-option" onClick={() => { setShowPromptManager(true); setShowFileMenu(false); }}>📋 Prompt Manager</button>
-                <button className="menu-option" onClick={() => { setShowKnowledgePanel(true); setShowFileMenu(false); }}>🧠 Knowledge Base</button>
-                <button className="menu-option" onClick={() => { setShowStorageManager(true); setShowFileMenu(false); }}>💾 Storage Manager</button>
-                <button className="menu-option" onClick={() => { setShowFileConverter(true); setShowFileMenu(false); }}>🔄 File Converter</button>
-              </div>
-            )}
-          </div>
-
-          {/* Output Menu */}
-          <div className="menu-item">
-            <button 
-              className="menu-label"
-              onClick={() => setShowOutputMenu(!showOutputMenu)}
-            >
-              Output
-            </button>
-            {showOutputMenu && (
-              <div className="menu-dropdown">
-                <button className="menu-option" onClick={() => { setShowImageGen(true); setShowOutputMenu(false); }}>📸 Generate Image</button>
-                <button className="menu-option" onClick={() => { setShowVideoGen(true); setShowOutputMenu(false); }}>🎬 Generate Video</button>
-              </div>
-            )}
-          </div>
-
-          {/* Tools - Power Knowledge */}
-          <button 
-            className="menu-label"
-            onClick={() => setShowPowerKnowledge(true)}
-            title="Web Search & Research"
-          >
-            🧠 Power Knowledge
-          </button>
-
-          {/* Account & Settings */}
-          <button 
-            className="menu-label"
-            onClick={() => router.push("/account")}
-          >
-            ⚙️ Account
-          </button>
-        </div>
-
-        <div className="menu-right">
-          {/* Persona Toggle */}
-          <button 
-            className="persona-toggle-btn"
-            onClick={() => setShowPersonaPanel(true)}
-            title="Switch Character"
-          >
-            <span className="persona-toggle-avatar">
-              <img 
-                src={charIconPath} 
-                alt={charName}
-                className="persona-toggle-img"
-              />
-            </span>
-            <span className="persona-toggle-name">{charName}</span>
-            <span className="persona-toggle-arrow">▼</span>
-          </button>
-
-          {byokMode && (
-            <span className="nexus-badge nexus-badge-primary">BYOK</span>
-          )}
-
-          <button 
-            className="nexus-btn nexus-btn-secondary nexus-btn-sm" 
-            onClick={handleSignOut}
-          >
-            Sign Out
-          </button>
-        </div>
-      </div>
-
-      {/* Stats Ribbon - Desktop Style */}
-      <div className="stats-ribbon">
-        <div className="ribbon-stat ribbon-mood" title="AI Character Mood">
-          <span className="mood-emoji">{moodEmoji}</span>
-          <span className="mood-text">{charName}: {moodText}</span>
-          <button 
-            className="mood-reset-btn" 
-            onClick={handleResetMood}
-            title="Reset mood to character default"
-          >
-            ↻
-          </button>
-        </div>
-
-        <div className="ribbon-separator">•</div>
-
-        <div className="ribbon-stat ribbon-model-selector" onClick={() => setShowModelSelector(true)}>
-          <span className="ribbon-icon">🤖</span>
-          <span className="ribbon-label">Model:</span>
-          <span className="ribbon-value ribbon-model-value">
-            {currentModel ? getModelDisplayName(currentModel) : 'Select Model'}
-            <span className="model-dropdown-arrow">▼</span>
-          </span>
-        </div>
-
-        {attachedFiles.length > 0 && (
-          <>
-            <div className="ribbon-separator">•</div>
-            <div className="ribbon-stat">
-              <span className="ribbon-icon">📎</span>
-              <span className="ribbon-value">{attachedFiles.length} file(s)</span>
-            </div>
-          </>
-        )}
-
-        {/* Context Canvas Indicator */}
-        <div className="ribbon-separator">•</div>
-        <div 
-          className={`ribbon-stat ribbon-canvas ${canvasTokenCount > 0 ? 'active' : ''}`}
-          onClick={() => setShowContextCanvas(true)}
-          title="Open Context Canvas - Pin documents for persistent AI context"
-        >
-          <span className="ribbon-icon">📌</span>
-          <span className="ribbon-label">Canvas:</span>
-          <span className="ribbon-value">
-            {canvasTokenCount > 0 
-              ? `${Math.round(canvasTokenCount / 1000)}k tokens` 
-              : 'Empty'}
-          </span>
-        </div>
-      </div>
-
-      {/* Modal Overlays */}
-      {showImageGen && (
-        <div className="modal-overlay" onClick={() => setShowImageGen(false)}>
-          <div onClick={(e) => e.stopPropagation()}>
-            <ImageGenPanel 
-              onClose={() => setShowImageGen(false)}
-              onImageGenerated={handleImageGenerated}
-              conversationContext={messages.slice(-5).map(m => 
-                `${m.role}: ${typeof m.content === 'string' ? m.content : '[attachment]'}`
-              ).join('\n')}
-            />
-          </div>
-        </div>
-      )}
-
-      {showVideoGen && (
-        <div className="modal-overlay" onClick={() => setShowVideoGen(false)}>
-          <div onClick={(e) => e.stopPropagation()}>
-            <VideoGenPanel 
-              onClose={() => setShowVideoGen(false)}
-              conversationContext={messages.slice(-5).map(m => 
-                `${m.role}: ${typeof m.content === 'string' ? m.content : '[attachment]'}`
-              ).join('\n')}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Model Selector Modal */}
-      {showModelSelector && (
-        <div className="modal-overlay" onClick={() => setShowModelSelector(false)}>
-          <ModelSelector
-            currentModel={currentModel}
-            availableModels={availableChatModels}
-            onSelect={(modelId) => {
-              setCurrentModel(modelId);
-              setSelectedModel('chat', modelId);
-              setShowModelSelector(false);
-            }}
-            onClose={() => setShowModelSelector(false)}
-          />
-        </div>
-      )}
-
-      {/* Messages */}
-      <div className="chat-messages">
-        {messages.length === 0 && (
-          <div className="welcome-container">
-            <div className="welcome-avatar">
-              <img 
-                src={charIconPath} 
-                alt={charName}
-                className="elara-avatar-img elara-avatar-lg"
-              />
-              <div className="elara-status-indicator" />
-            </div>
-            <h2 className="welcome-title">
-              Hey{userDisplayName && userDisplayName !== 'User' ? `, ${userDisplayName.split(" ")[0]}` : ""}! 👋
-            </h2>
-            <p className="welcome-subtitle">
-              I'm {charName}. What's on your mind today?
-            </p>
-            
-            <div className="quick-prompts">
-              <button 
-                className="quick-prompt"
-                onClick={() => setShowImageGen(true)}
-              >
-                📸 {charName} selfie
-              </button>
-              <button 
-                className="quick-prompt"
-                onClick={() => setShowVideoGen(true)}
-              >
-                🎬 {charName} video
-              </button>
-              <button 
-                className="quick-prompt"
-                onClick={() => setInput("Help me brainstorm ideas for...")}
-              >
-                💡 Brainstorm ideas
-              </button>
-              <button 
-                className="quick-prompt"
-                onClick={() => setInput("Explain this concept: ")}
-              >
-                📚 Explain something
-              </button>
-              <button 
-                className="quick-prompt"
-                onClick={() => setInput("Write code that...")}
-              >
-                💻 Write code
-              </button>
-              <button 
-                className="quick-prompt council-prompt"
-                onClick={() => setInput("[Council Mode] ")}
-                title="Consult the Council of Wisdom - all personas weigh in"
-              >
-                🏛️ Ask the Council
-              </button>
-            </div>
-          </div>
-        )}
-
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`chat-message ${msg.role === "user" ? "chat-message-user" : "chat-message-ai"}`}
-          >
-            {msg.role === "assistant" && (
-              <div className="message-avatar">
-                <img 
-                  src={charIconPath} 
-                  alt={charName}
-                  className="message-avatar-img"
-                />
-              </div>
-            )}
-            <div className="message-content">
-              {/* Render AI thinking in collapsible section (desktop-style) */}
-              {msg.role === 'assistant' && (msg as ChatMessageWithMedia).thinking && (
-                <details className="thinking-section">
-                  <summary className="thinking-toggle">
-                    <span className="thinking-icon">💭</span>
-                    <span className="thinking-label">Show reasoning</span>
-                  </summary>
-                  <div className="thinking-content">
-                    {(msg as ChatMessageWithMedia).thinking}
-                  </div>
-                </details>
-              )}
-              
-              {/* Render message content with markdown support */}
-              <MessageContent
-                content={typeof msg.content === 'string' 
-                  ? msg.content 
-                  : msg.content.find(p => p.type === 'text')?.text || ''}
-                role={msg.role}
-              />
-              
-              {/* Render generated image if present */}
-              {(msg as ChatMessageWithMedia).image && (
-                <div className="message-image-container">
-                  <img 
-                    src={(msg as ChatMessageWithMedia).image!.dataUrl} 
-                    alt="Generated" 
-                    className="message-image"
-                    onClick={() => handleDownloadImage((msg as ChatMessageWithMedia).image!.signedContent, (msg as ChatMessageWithMedia).image!.prompt)}
-                  />
-                  <div className="image-actions">
-                    <button 
-                      className="nexus-btn nexus-btn-primary nexus-btn-sm"
-                      onClick={() => handleDownloadImage((msg as ChatMessageWithMedia).image!.signedContent, (msg as ChatMessageWithMedia).image!.prompt)}
-                    >
-                      💾 Download with Metadata
-                    </button>
-                    <details className="image-metadata">
-                      <summary>📋 Provenance</summary>
-                      <pre>{(msg as ChatMessageWithMedia).image!.signedContent.metadataJson}</pre>
-                    </details>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {sending && (
-          <div className="chat-message chat-message-ai">
-            <div className="message-avatar">
-              <img 
-                src={charIconPath} 
-                alt={charName}
-                className="message-avatar-img"
-              />
-            </div>
-            <div className="message-content">
-              <div className="nexus-typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Desktop-Style Input Area */}
-      <div className="chat-input-area">
-        {/* Attached Files Display */}
-        {attachedFiles.length > 0 && (
-          <div className="attached-files">
-            {attachedFiles.map((file, i) => (
-              <div key={i} className="attached-file">
-                <span className="file-icon">📄</span>
-                <span className="file-name">{file.name}</span>
-                <button className="file-remove" onClick={() => handleRemoveFile(i)}>✕</button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="chat-form">
-          {/* Quick Action Buttons - Selfie, Video & Context Canvas */}
-          <div className="quick-action-buttons">
-            <button
-              type="button"
-              className="quick-action-btn selfie-btn"
-              title={`Request a selfie from ${charName}`}
-              onClick={() => setShowImageGen(true)}
-            >
-              📸
-            </button>
-            <button
-              type="button"
-              className="quick-action-btn video-btn"
-              title={`Request a video from ${charName}`}
-              onClick={() => setShowVideoGen(true)}
-            >
-              🎬
-            </button>
-            <button
-              type="button"
-              className={`quick-action-btn canvas-btn ${canvasTokenCount > 0 ? 'active' : ''}`}
-              title="Context Canvas - Pin documents"
-              onClick={() => setShowContextCanvas(true)}
-            >
-              📌
-            </button>
-          </div>
-
-          {/* Main Input */}
-          <textarea
-            ref={textareaRef}
-            className="chat-input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={ctrlEnterSend 
-              ? `Message ${charName}... (Ctrl+Enter to send)` 
-              : `Message ${charName}... (Enter to send)`}
-            rows={3}
-          />
-
-          {/* Send Button with Attachments and Voice */}
-          <div className="send-button-stack">
-            <div className="send-attachments">
-              <button 
-                type="button" 
-                className="attach-btn" 
-                title="Attach File"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                📄
-              </button>
-              {/* Voice Input Button */}
-              {isSTTSupported() && (
-                <button 
-                  type="button" 
-                  className={`voice-btn ${isRecording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
-                  title={isRecording ? "Stop Recording" : transcribing ? "Transcribing..." : "Voice Input"}
-                  onClick={handleVoiceToggle}
-                  disabled={transcribing}
-                >
-                  {transcribing ? '⏳' : isRecording ? '⏹️' : '🎤'}
-                </button>
-              )}
-              {isRecording && (
-                <button 
-                  type="button" 
-                  className="voice-cancel-btn"
-                  title="Cancel Recording"
-                  onClick={handleVoiceCancel}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            <button 
-              className="send-btn-main" 
-              onClick={handleSend}
-              disabled={sending || !input.trim()}
-            >
-              {sending ? "..." : "Send"}
-            </button>
-            
-            {/* Deep Thought Toggle */}
-            <div className="deep-thought-container">
-              <input 
-                type="checkbox" 
-                id="deep-thought-toggle" 
-                checked={deepThoughtEnabled}
-                onChange={(e) => setDeepThoughtEnabled(e.target.checked)}
-              />
-              <label htmlFor="deep-thought-toggle" title="Multi-turn agentic reasoning with tool calling">
-                🧠 Deep Thought
-              </label>
-              {deepThoughtEnabled && (
-                <input 
-                  type="number"
-                  className="deep-thought-turns"
-                  min="3"
-                  max="20"
-                  value={deepThoughtTurns}
-                  onChange={(e) => setDeepThoughtTurns(Math.min(20, Math.max(3, parseInt(e.target.value) || 10)))}
-                  title="Maximum reasoning turns (3-20)"
-                />
-              )}
-            </div>
-            
-            {/* Keyboard Shortcut Toggle */}
-            <div className="keyboard-shortcut-container">
-              <input 
-                type="checkbox" 
-                id="ctrl-enter-toggle" 
-                checked={ctrlEnterSend}
-                onChange={(e) => handleCtrlEnterToggle(e.target.checked)}
-              />
-              <label htmlFor="ctrl-enter-toggle">⌨️ Ctrl+Enter</label>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <style jsx>{`
+	const router = useRouter();
+	const [user, setUser] = useState<User | null>(null);
+	const [loading, setLoading] = useState(true);
+	const [messages, setMessages] = useState<ChatMessageWithMedia[]>([]);
+	const [input, setInput] = useState("");
+	const [sending, setSending] = useState(false);
+	const [byokMode, setByokMode] = useState(false);
+	const [character, setCharacter] = useState<Character | null>(null);
+	const [currentModel, setCurrentModel] = useState<string>("");
+	const [availableChatModels, setAvailableChatModels] = useState<Model[]>([]);
+	const [showModelSelector, setShowModelSelector] = useState(false);
+	const [showImageGen, setShowImageGen] = useState(false);
+	const [showVideoGen, setShowVideoGen] = useState(false);
+	const [_showCharacterEditor, setShowCharacterEditor] = useState(false);
+	const [showPersonaPanel, setShowPersonaPanel] = useState(false);
+	const [showFileMenu, setShowFileMenu] = useState(false);
+	const [showOutputMenu, setShowOutputMenu] = useState(false);
+	const [showDisclaimer, setShowDisclaimer] = useState(false);
+	const [showPromptManager, setShowPromptManager] = useState(false);
+	const [showKnowledgePanel, setShowKnowledgePanel] = useState(false);
+	const [showStorageManager, setShowStorageManager] = useState(false);
+	const [showPowerKnowledge, setShowPowerKnowledge] = useState(false);
+	const [showFileConverter, setShowFileConverter] = useState(false);
+	const [showContextCanvas, setShowContextCanvas] = useState(false);
+	const [canvasTokenCount, setCanvasTokenCount] = useState(0);
+	const [ctrlEnterSend, setCtrlEnterSend] = useState(true);
+	const [deepThoughtEnabled, setDeepThoughtEnabled] = useState(false);
+	const [deepThoughtTurns, setDeepThoughtTurns] = useState(10);
+	const [moodEmoji, setMoodEmoji] = useState("😊");
+	const [moodText, setMoodText] = useState("good, engaged");
+	const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+	const [isRecording, setIsRecording] = useState(false);
+	const [transcribing, setTranscribing] = useState(false);
+	const [userDisplayName, setUserDisplayName] = useState<string>("User");
+	const messagesEndRef = useRef<HTMLDivElement>(null);
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		const initializeApp = async () => {
+			// Check BYOK mode
+			setByokMode(isBYOKMode());
+
+			// Load active character
+			setCharacter(getActiveCharacter());
+
+			// Load current model selection
+			const defaultModel = await getDefaultChatModel();
+			setCurrentModel(defaultModel || "");
+
+			// Load available chat models from API
+			getChatModels()
+				.then((models) => {
+					if (models.length > 0) {
+						setAvailableChatModels(models);
+					}
+				})
+				.catch((err) => console.warn("Failed to load chat models:", err));
+
+			// Load Context Canvas state
+			loadContextCanvas()
+				.then(() => {
+					const stats = getTokenStats();
+					setCanvasTokenCount(stats.usedTokens);
+				})
+				.catch((err) => console.warn("Failed to load context canvas:", err));
+
+			// Load user preferences
+			if (typeof window !== "undefined") {
+				const ctrlEnterPref = localStorage.getItem("openelara_ctrl_enter_send");
+				setCtrlEnterSend(ctrlEnterPref === "true");
+
+				const deepThoughtEnabledPref = localStorage.getItem("openelara_deep_thought_enabled");
+				setDeepThoughtEnabled(deepThoughtEnabledPref === "true");
+
+				const deepThoughtTurnsPref = localStorage.getItem("openelara_deep_thought_turns");
+				setDeepThoughtTurns(deepThoughtTurnsPref ? parseInt(deepThoughtTurnsPref, 10) : 10);
+			}
+		};
+
+		const unsubscribe = onAuthStateChanged(auth, async (user) => {
+			setUser(user);
+			setLoading(false);
+			if (!user) {
+				router.push("/");
+			} else {
+				// Load display name from Firestore profile
+				try {
+					const userRef = doc(db, "users", user.uid);
+					const userSnap = await getDoc(userRef);
+					if (userSnap.exists()) {
+						const profile = userSnap.data();
+						setUserDisplayName(profile.displayName || user.email?.split("@")[0] || "User");
+					} else {
+						setUserDisplayName(user.email?.split("@")[0] || "User");
+					}
+				} catch (err) {
+					console.warn("Failed to load user profile:", err);
+					setUserDisplayName(user.email?.split("@")[0] || "User");
+				}
+			}
+		});
+
+		initializeApp();
+
+		return () => unsubscribe();
+	}, [router]);
+
+	useEffect(() => {
+		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+	}, []);
+
+	// Auto-resize textarea
+	useEffect(() => {
+		if (textareaRef.current) {
+			textareaRef.current.style.height = "auto";
+			textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+		}
+	}, []);
+
+	// Get short display name for a model
+	const getModelDisplayName = (modelId: string): string => {
+		// Check if we have the model in available models
+		const model = availableChatModels.find(m => m.id === modelId);
+		if (model?.displayName) {
+			return model.displayName;
+		}
+		// Fallback: extract readable name from model ID
+		// e.g., "meta-llama/Llama-3.3-70B-Instruct-Turbo" → "Llama 3.3 70B"
+		const parts = modelId.split("/");
+		const name = parts[parts.length - 1];
+		return name
+			.replace(/-Instruct|-Turbo|-Free|-Chat/gi, "")
+			.replace(/-/g, " ")
+			.trim();
+	};
+
+	const handleSignOut = async () => {
+		await signOut(auth);
+		router.push("/");
+	};
+
+	// Mood display helper
+	const updateMoodDisplay = (_tracker: MoodTracker) => {
+		// TODO: Implement mood tracking
+		setMoodEmoji("😊");
+		setMoodText("good, engaged");
+	};
+
+	// Update mood display when messages change
+	useEffect(() => {
+		const tracker = getMoodTracker();
+		updateMoodDisplay(tracker);
+	}, [messages]); // Depend on messages instead
+
+	const handleResetMood = () => {
+		resetMoodTracker();
+		const tracker = getMoodTracker();
+		updateMoodDisplay(tracker);
+	};
+
+	const handleAcceptDisclaimer = () => {
+		if (typeof window !== "undefined") {
+			localStorage.setItem("openelara_ai_disclaimer_accepted", new Date().toISOString());
+		}
+		setShowDisclaimer(false);
+	};
+
+	const handleExportChat = () => {
+		const chatExport = {
+			character: charName,
+			exportedAt: new Date().toISOString(),
+			messages: messages.map((m) => ({
+				role: m.role,
+				content: typeof m.content === "string" ? m.content : m.content.find((p) => p.type === "text")?.text || "",
+			})),
+		};
+
+		const blob = new Blob([JSON.stringify(chatExport, null, 2)], { type: "application/json" });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `${charName}_chat_${new Date().toISOString().slice(0, 10)}.json`;
+		a.click();
+		URL.revokeObjectURL(url);
+		setShowFileMenu(false);
+	};
+
+	const handleClearHistory = () => {
+		if (confirm("Clear all messages? This cannot be undone.")) {
+			setMessages([]);
+			resetMoodTracker();
+			updateMoodDisplay(getMoodTracker());
+			setShowFileMenu(false);
+		}
+	};
+
+	const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const files = e.target.files;
+		if (files && files.length > 0) {
+			setAttachedFiles((prev) => [...prev, ...Array.from(files)]);
+		}
+	};
+
+	const handleRemoveFile = (index: number) => {
+		setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+	};
+
+	// ============================================================================
+	// VOICE INPUT (STT) HANDLERS
+	// ============================================================================
+
+	const handleVoiceToggle = async () => {
+		if (isRecording) {
+			// Stop recording and transcribe
+			setIsRecording(false);
+			setTranscribing(true);
+
+			try {
+				const stopResult = await stopRecording();
+				if (!stopResult.success || !stopResult.audioBlob) {
+					console.error("[Voice] Failed to stop recording:", stopResult.error);
+					return;
+				}
+
+				// Transcribe the audio
+				const transcribeResult = await transcribeAudio(stopResult.audioBlob);
+				if (transcribeResult.success && transcribeResult.text) {
+					// Append transcribed text to input
+					setInput((prev) => (prev ? `${prev} ${transcribeResult.text}` : transcribeResult.text || ""));
+					textareaRef.current?.focus();
+				} else {
+					console.error("[Voice] Transcription failed:", transcribeResult.error);
+					// Could show error toast here
+				}
+			} catch (e: any) {
+				console.error("[Voice] Error:", e);
+			} finally {
+				setTranscribing(false);
+			}
+		} else {
+			// Start recording
+			const startResult = await startRecording();
+			if (startResult.success) {
+				setIsRecording(true);
+			} else {
+				console.error("[Voice] Failed to start recording:", startResult.error);
+				// Could show error toast here
+			}
+		}
+	};
+
+	const handleVoiceCancel = () => {
+		cancelRecording();
+		setIsRecording(false);
+		setTranscribing(false);
+	};
+
+	const handleCtrlEnterToggle = (checked: boolean) => {
+		setCtrlEnterSend(checked);
+		if (typeof window !== "undefined") {
+			localStorage.setItem("openelara_ctrl_enter_send", String(checked));
+		}
+	};
+
+	/**
+	 * Detect if user is requesting a selfie or video from the AI character
+	 * Must be explicit requests like "send me a pic" or "send me a video"
+	 */
+	const detectMediaRequest = (text: string): "selfie" | "video" | null => {
+		const normalized = text.toLowerCase().trim();
+
+		// Selfie patterns - must be explicit requests
+		const selfiePatterns = [
+			/send\s+(?:me\s+)?(?:a\s+)?(?:pic|picture|photo|selfie|image)/i,
+			/(?:take|snap|get)\s+(?:me\s+)?(?:a\s+)?(?:pic|picture|photo|selfie)/i,
+			/(?:can\s+(?:i\s+)?(?:get|have|see)\s+)?(?:a\s+)?(?:pic|picture|photo|selfie)\s+(?:of\s+)?(?:you|yourself)/i,
+			/show\s+me\s+(?:a\s+)?(?:pic|picture|photo|selfie)/i,
+			/(?:want|like)\s+(?:to\s+)?(?:see\s+)?(?:a\s+)?(?:pic|picture|photo|selfie)\s+(?:of\s+)?you/i,
+		];
+
+		// Video patterns - must be explicit requests
+		const videoPatterns = [
+			/send\s+(?:me\s+)?(?:a\s+)?video/i,
+			/(?:take|record|make|get)\s+(?:me\s+)?(?:a\s+)?video/i,
+			/(?:can\s+(?:i\s+)?(?:get|have|see)\s+)?(?:a\s+)?video\s+(?:of\s+)?(?:you|yourself)/i,
+			/show\s+me\s+(?:a\s+)?video/i,
+			/(?:want|like)\s+(?:to\s+)?(?:see\s+)?(?:a\s+)?video\s+(?:of\s+)?you/i,
+		];
+
+		for (const pattern of selfiePatterns) {
+			if (pattern.test(normalized)) {
+				return "selfie";
+			}
+		}
+
+		for (const pattern of videoPatterns) {
+			if (pattern.test(normalized)) {
+				return "video";
+			}
+		}
+
+		return null;
+	};
+
+	const handleSend = async () => {
+		if (!input.trim() || sending) {
+			return;
+		}
+
+		const userMessage: ChatMessage = { role: "user", content: input.trim() };
+		setMessages((prev) => [...prev, userMessage]);
+		const currentInput = input.trim();
+		setInput("");
+		setSending(true);
+
+		// Capture and clear attached files
+		const filesToProcess = [...attachedFiles];
+		setAttachedFiles([]);
+
+		// Check for Council Mode trigger
+		const isCouncilMode =
+			currentInput.toLowerCase().startsWith("[council mode]") || currentInput.toLowerCase().startsWith("[council]");
+
+		// Check for media request (selfie/video) - LLM tool invocation
+		const mediaRequest = detectMediaRequest(currentInput);
+
+		try {
+			// Get mood tracker and update from user message
+			const moodTracker = getMoodTracker();
+			// Content is always string for user messages in this context
+			const messageText =
+				typeof userMessage.content === "string"
+					? userMessage.content
+					: userMessage.content.find((p) => p.type === "text")?.text || "";
+			moodTracker.updateFromUserMessage(messageText);
+
+			// Get active character
+			const activeChar = character || getActiveCharacter();
+
+			// ================== COUNCIL MODE ==================
+			if (isCouncilMode) {
+				// Strip the council mode prefix from the question
+				const question =
+					currentInput
+						.replace(/^\[council\s*mode\]\s*/i, "")
+						.replace(/^\[council\]\s*/i, "")
+						.trim() || "What are your thoughts?";
+
+				try {
+					const councilResult = await executeCouncilMode({
+						userQuestion: question,
+						conversationHistory: messages,
+					});
+
+					// Build a rich response with perspectives
+					let councilResponse = "";
+
+					if (councilResult.perspectives.length > 0) {
+						councilResponse += "🏛️ **Council of Wisdom Perspectives:**\n\n";
+						for (const p of councilResult.perspectives) {
+							if (p.success) {
+								councilResponse += `**${p.characterName}** _(${p.persona})_:\n${p.answer}\n\n`;
+							}
+						}
+						councilResponse += "---\n\n";
+						councilResponse += `**${councilResult.leadConsultant}'s Synthesis:**\n${councilResult.synthesis}`;
+					} else {
+						councilResponse = councilResult.synthesis || "The council could not reach a consensus.";
+					}
+
+					const assistantMessage: ChatMessageWithMedia = {
+						role: "assistant",
+						content: councilResponse,
+						thinking: councilResult.thinking,
+					};
+
+					setMessages((prev) => [...prev, assistantMessage]);
+				} catch (e) {
+					console.error("[Council Mode] Error:", e);
+					setMessages((prev) => [
+						...prev,
+						{ role: "assistant", content: "The Council of Wisdom is unavailable at the moment. Please try again." },
+					]);
+				}
+
+				setSending(false);
+				return; // Exit early - council mode handled
+			}
+
+			// ================== MEDIA REQUEST (SELFIE/VIDEO) ==================
+			if (mediaRequest) {
+				// User requested a selfie or video through natural language
+				// Show an acknowledgment message, then autonomously generate
+				const mediaAck: ChatMessageWithMedia = {
+					role: "assistant",
+					content:
+						mediaRequest === "selfie"
+							? `📸 Sure! Let me take a selfie for you...`
+							: `🎬 Of course! Let me create a video for you...`,
+				};
+				setMessages((prev) => [...prev, mediaAck]);
+
+				// Autonomously generate without modal
+				if (mediaRequest === "selfie") {
+					// Generate agentic selfie autonomously
+					(async () => {
+						try {
+							const { generateAgenticSelfie } = await import("../lib/mediaGeneration");
+							const { getMoodState } = await import("../lib/mood");
+							const { storeMedia } = await import("../lib/storage");
+
+							const moodState = getMoodState();
+							const firstRecommended = "black-forest-labs/FLUX.1-schnell";
+
+							const agenticResult = await generateAgenticSelfie({
+								sceneSuggestion: undefined, // Let AI decide based on mood/context
+								model: firstRecommended,
+								character: activeChar,
+								moodState,
+								conversationContext: messages
+									.slice(-5)
+									.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : "[attachment]"}`)
+									.join("\n"),
+							});
+
+							// Auto-store to cloud
+							const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+							const filename = `${activeChar.name}_selfie_${timestamp}.png`;
+
+							try {
+								await storeMedia(agenticResult.image.signedContent, filename, "image/png");
+							} catch (storageError) {
+								console.warn("Could not store to cloud (continuing):", storageError);
+							}
+
+							// Add image to chat
+							const imageMsg: ChatMessageWithMedia = {
+								role: "assistant",
+								content: `📸 ${agenticResult.aiSceneDecision}\n\nHere's my selfie! Click to download.`,
+								image: {
+									dataUrl: agenticResult.image.signedContent.dataUrl,
+									signedContent: agenticResult.image.signedContent,
+									prompt: agenticResult.image.prompt,
+								},
+							};
+							setMessages((prev) => [...prev, imageMsg]);
+						} catch (error: any) {
+							const errorMsg: ChatMessageWithMedia = {
+								role: "assistant",
+								content: `❌ Sorry, I couldn't take a selfie: ${error.message}`,
+							};
+							setMessages((prev) => [...prev, errorMsg]);
+						} finally {
+							setSending(false);
+						}
+					})();
+				} else {
+					// Video: autonomous generation with progress updates
+					(async () => {
+						try {
+							const { generateAgenticVideo } = await import("../lib/mediaGeneration");
+							const { getDefaultVideoModel } = await import("../lib/models");
+							const { getMoodState } = await import("../lib/mood");
+							const { storeMedia } = await import("../lib/storage");
+
+							const moodState = getMoodState();
+							const defaultModel = await getDefaultVideoModel();
+
+							// Add progress message
+							const progressMsg: ChatMessageWithMedia = {
+								role: "assistant",
+								content: "🎬 Creating your video... This may take a few minutes.",
+							};
+							setMessages((prev) => [...prev, progressMsg]);
+
+							const agenticResult = await generateAgenticVideo({
+								sceneSuggestion: undefined, // Let AI decide based on mood/context
+								model: defaultModel,
+								duration: 5, // Default 5 seconds
+								character: activeChar,
+								moodState,
+								conversationContext: messages
+									.slice(-5)
+									.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : "[attachment]"}`)
+									.join("\n"),
+								onProgress: (status: string, attempt: number) => {
+									console.log(`[Video Gen] ${status} (${attempt})`);
+								},
+							});
+
+							// Auto-store to cloud (non-blocking) - skip for videos since URL is already hosted
+							// Videos from Together.ai don't need storage - the URL is permanent
+
+							// Add video to chat
+							const videoMsg: ChatMessageWithMedia = {
+								role: "assistant",
+								content: `🎬 ${agenticResult.aiSceneDecision}\n\nHere's my video! Right-click to download.`,
+								video: {
+									url: agenticResult.video.url,
+									prompt: agenticResult.video.prompt,
+								},
+							};
+							setMessages((prev) => [...prev, videoMsg]);
+						} catch (error: any) {
+							const errorMsg: ChatMessageWithMedia = {
+								role: "assistant",
+								content: `❌ Sorry, I couldn't create a video: ${error.message}`,
+							};
+							setMessages((prev) => [...prev, errorMsg]);
+						} finally {
+							setSending(false);
+						}
+					})();
+				}
+
+				return; // Exit early - media request handled
+			}
+
+			// ================== REGULAR CHAT ==================
+			// Build structured system prompt (from desktop promptConstants.js)
+
+			// Get emotional context from mood tracker
+			const moodContext = moodTracker.getPromptContext();
+
+			const systemPrompt = buildChatSystemPrompt({
+				userName: userDisplayName,
+				character: activeChar,
+				emotionalContext: moodContext || null,
+				outputTokenLimit: 2048, // Default token limit
+			});
+
+			// RAG: Search for relevant context from memories/knowledge
+			let ragContext: string | null = null;
+			try {
+				ragContext = await buildRAGContext(messageText);
+			} catch (e) {
+				console.warn("[Chat] RAG search failed (continuing without context):", e);
+			}
+
+			// Process attached files - read content and prepare for context
+			const processedFiles: Array<{ filename: string; content: string }> = [];
+			for (const file of filesToProcess) {
+				try {
+					const content = await file.text();
+					// Truncate very large files (max 50KB per file)
+					const truncated =
+						content.length > 50000 ? `${content.substring(0, 50000)}\n... [File truncated - too large]` : content;
+					processedFiles.push({ filename: file.name, content: truncated });
+				} catch (e) {
+					console.warn(`[Chat] Failed to read file ${file.name}:`, e);
+				}
+			}
+
+			// Build Context Canvas content (persistent documents with ZERO truncation)
+			let canvasContext = "";
+			try {
+				await loadContextCanvas();
+				const canvasResult = buildFullCanvasContext();
+				if (canvasResult.fileCount > 0) {
+					canvasContext = canvasResult.content;
+					setCanvasTokenCount(canvasResult.tokenCount);
+					console.log(`[Chat] Context Canvas: ${canvasResult.fileCount} files, ~${canvasResult.tokenCount} tokens`);
+				}
+			} catch (e) {
+				console.warn("[Chat] Context Canvas load failed (continuing without):", e);
+			}
+
+			// ================== DEEP THOUGHT MODE ==================
+			if (deepThoughtEnabled) {
+				try {
+					// Use Deep Thought engine for multi-turn agentic reasoning
+					const { executeDeepThought } = await import("../lib/deepThought");
+
+					// Show thinking indicator
+					const thinkingMessage: ChatMessageWithMedia = {
+						role: "assistant",
+						content: "🧠 _Engaging Deep Thought mode... (analyzing with multiple reasoning turns)_",
+					};
+					setMessages((prev) => [...prev, thinkingMessage]);
+
+					const deepThoughtResult = await executeDeepThought(messageText, {
+						maxTurns: deepThoughtTurns,
+						systemPrompt,
+					});
+
+					// Replace thinking message with final result
+					setMessages((prev) => {
+						const withoutThinking = prev.slice(0, -1);
+						return [
+							...withoutThinking,
+							{
+								role: "assistant",
+								content: deepThoughtResult.finalResponse,
+								thinking: deepThoughtResult.thinkingProcess,
+							},
+						];
+					});
+
+					setSending(false);
+					return; // Exit early - Deep Thought handled
+				} catch (e) {
+					console.error("[Deep Thought] Error:", e);
+					setMessages((prev) => {
+						const withoutThinking = prev.filter((m) => {
+							const content = typeof m.content === "string" ? m.content : "";
+							return !content.includes("Engaging Deep Thought");
+						});
+						return [
+							...withoutThinking,
+							{
+								role: "assistant",
+								content: "⚠️ Deep Thought mode encountered an error. Falling back to regular chat...",
+							},
+						];
+					});
+					// Fall through to regular chat on error
+				}
+			}
+
+			// Build the enriched user message with Context Canvas + RAG context + attached files
+			const contextPrefix = buildContextPrefix({
+				ragContext,
+				attachedFiles: processedFiles.length > 0 ? processedFiles : undefined,
+			});
+
+			// Combine: Canvas (persistent) + Context Prefix (RAG + attachments) + User Message
+			const fullContext = canvasContext + contextPrefix;
+			const enrichedContent = fullContext ? fullContext + messageText : messageText;
+
+			const enrichedUserMessage: ChatMessage = {
+				role: "user",
+				content: enrichedContent,
+			};
+
+			const response = await chat([{ role: "system", content: systemPrompt }, ...messages, enrichedUserMessage]);
+
+			const assistantMessage: ChatMessageWithMedia = {
+				role: "assistant",
+				content: response.choices[0]?.message?.content || getErrorResponse("unknown"),
+				thinking: response.choices[0]?.message?.thinking, // Capture AI's reasoning
+			};
+
+			setMessages((prev) => [...prev, assistantMessage]);
+
+			// RAG: Auto-ingest conversation for memory (async, non-blocking)
+			// This allows the AI to remember past conversations
+			const updatedMessages = [...messages, userMessage, assistantMessage];
+			if (updatedMessages.length >= 4) {
+				// Only ingest after a few exchanges
+				const conversationId = `chat_${user?.uid}_${Date.now()}`;
+				ingestConversation(
+					conversationId,
+					updatedMessages.map((m) => ({
+						role: m.role as "user" | "assistant" | "system",
+						content: typeof m.content === "string" ? m.content : "[attachment]",
+						timestamp: new Date(),
+					})),
+					`Chat with ${activeChar.name} - ${new Date().toLocaleDateString()}`,
+				).catch((e) => console.warn("[Chat] Memory ingestion failed:", e));
+			}
+		} catch (e: any) {
+			let errorType: "network" | "api" | "limit" | "unknown" = "unknown";
+			if (e.message?.includes("network") || e.message?.includes("fetch")) {
+				errorType = "network";
+			} else if (e.message?.includes("rate") || e.message?.includes("limit")) {
+				errorType = "limit";
+			} else if (e.message?.includes("API") || e.message?.includes("key")) {
+				errorType = "api";
+			}
+
+			setMessages((prev) => [...prev, { role: "assistant", content: getErrorResponse(errorType) }]);
+		} finally {
+			setSending(false);
+		}
+	};
+
+	const handleKeyDown = (e: React.KeyboardEvent) => {
+		if (ctrlEnterSend) {
+			// Ctrl+Enter to send
+			if (e.key === "Enter" && e.ctrlKey) {
+				e.preventDefault();
+				handleSend();
+			}
+		} else {
+			// Enter to send (Shift+Enter for newline)
+			if (e.key === "Enter" && !e.shiftKey) {
+				e.preventDefault();
+				handleSend();
+			}
+		}
+	};
+
+	const handleNewChat = () => {
+		setMessages([]);
+	};
+
+	const handleCharacterChange = (char: Character) => {
+		setCharacter(char);
+		setShowCharacterEditor(false);
+		// Reset chat and mood tracker when character changes
+		setMessages([]);
+		resetMoodTracker();
+	};
+
+	const handlePromptSelect = (prompt: { content: string | object; type: string }) => {
+		// Insert prompt content into chat input
+		const content = typeof prompt.content === "string" ? prompt.content : JSON.stringify(prompt.content);
+
+		if (prompt.type === "chat") {
+			setInput(content);
+			textareaRef.current?.focus();
+		} else if (prompt.type === "image") {
+			// For image prompts, open the image generator with the prompt
+			setShowImageGen(true);
+			// TODO: Pass prompt to ImageGenPanel
+		} else if (prompt.type === "video") {
+			setShowVideoGen(true);
+			// TODO: Pass prompt to VideoGenPanel
+		}
+	};
+
+	const handlePowerKnowledgeResult = (content: string) => {
+		// Insert web research results into chat as context and prepare for analysis
+		const contextMsg: ChatMessageWithMedia = {
+			role: "user",
+			content: `[Web Research Context]\n\n${content}\n\n---\nPlease analyze or summarize this information.`,
+		};
+		setMessages((prev) => [...prev, contextMsg]);
+
+		// Set input for user to optionally modify and send
+		setInput("Based on the web research above, please provide a helpful analysis or summary.");
+		textareaRef.current?.focus();
+	};
+
+	const handleImageGenerated = (image: GeneratedImage) => {
+		// Add a message showing the generated image inline
+		const imageMsg: ChatMessageWithMedia = {
+			role: "assistant",
+			content: `📸 Here's your generated image! Click to download with provenance metadata.`,
+			image: {
+				dataUrl: image.signedContent.dataUrl,
+				signedContent: image.signedContent,
+				prompt: image.prompt,
+			},
+		};
+		setMessages((prev) => [...prev, imageMsg]);
+		setShowImageGen(false);
+	};
+
+	const handleDownloadImage = (signedContent: SignedContent, _prompt: string) => {
+		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+		const charName = character?.name || "Elara";
+		const filename = `${charName}_selfie_${timestamp}.png`;
+		downloadWithMetadata(signedContent, filename);
+	};
+
+	// Current character name (fallback to ELARA)
+	const charName = character?.name || ELARA.NAME;
+	const charIconPath = character?.iconPath || "/characters/elara_avatar.png";
+
+	// Helper to render avatar (always uses image - no emoji fallback)
+	const _renderAvatar = (size: "sm" | "md" | "lg" = "md") => {
+		const sizes = {
+			sm: { width: 28, height: 28 },
+			md: { width: 40, height: 40 },
+			lg: { width: 80, height: 80 },
+		};
+		const s = sizes[size];
+
+		return (
+			<Image
+				src={charIconPath}
+				alt={charName}
+				className="elara-avatar-img"
+				style={{ width: s.width, height: s.height, borderRadius: "50%", objectFit: "cover" }}
+				width={typeof s.width === 'number' ? s.width : 32}
+				height={typeof s.height === 'number' ? s.height : 32}
+			/>
+		);
+	};
+
+	if (loading) {
+		return (
+			<div className="center-content">
+				<div className="elara-logo">
+					<Image src="/icon.png" alt="OpenElara" width={48} height={48} className="elara-logo-icon-img" />
+				</div>
+				<div className="nexus-spinner" />
+			</div>
+		);
+	}
+
+	return (
+		<>
+			<TrialBanner />
+			<div className="chat-container">
+				{/* AI Disclaimer Modal */}
+				{showDisclaimer && (
+					<div className="disclaimer-modal">
+						<div className="disclaimer-content">
+							<h2>⚠️ AI Content Disclosure</h2>
+
+							<h3>This Application Generates AI Content</h3>
+							<p>
+								All text, images, video, and audio outputs are produced by{" "}
+								<strong>third-party artificial intelligence services</strong>, not by Apply My Tech.
+							</p>
+							<p>
+								OpenElara is a <strong>"Bring Your Own Key" (BYOK) client</strong>—the app provides the interface, but
+								the AI "intelligence" comes from external providers via your own API keys.
+							</p>
+
+							<h3>You Are Responsible For:</h3>
+							<ul>
+								<li>The prompts you submit to AI services</li>
+								<li>Reviewing and verifying AI-generated outputs</li>
+								<li>Understanding that AI content may be inaccurate, biased, or inappropriate</li>
+								<li>Complying with the terms of service of your chosen AI providers</li>
+							</ul>
+
+							<h3>Content Guidelines</h3>
+							<p>
+								This application does <strong>not filter or moderate</strong> AI-generated content. The quality and
+								appropriateness of outputs depend on your prompts and the AI providers you use.
+							</p>
+
+							<div className="disclaimer-accept">
+								<button type="button" className="nexus-btn nexus-btn-primary" onClick={handleAcceptDisclaimer}>
+									I understand this application generates AI content
+								</button>
+							</div>
+						</div>
+					</div>
+				)}
+
+				{/* Persona Panel (Desktop-style slide-out) */}
+				<PersonaPanel
+					isOpen={showPersonaPanel}
+					onClose={() => setShowPersonaPanel(false)}
+					onCharacterSelected={handleCharacterChange}
+				/>
+
+				{/* Prompt Manager Modal */}
+				<PromptManager
+					isOpen={showPromptManager}
+					onClose={() => setShowPromptManager(false)}
+					onSelectPrompt={handlePromptSelect}
+				/>
+
+				{/* Knowledge Base Panel */}
+				{showKnowledgePanel && (
+					<div
+						className="modal-overlay"
+						onClick={() => setShowKnowledgePanel(false)}
+					>
+						<div className="modal-container" onClick={(e) => e.stopPropagation()}>
+							<KnowledgePanel onClose={() => setShowKnowledgePanel(false)} />
+						</div>
+					</div>
+				)}
+
+				{/* Storage Manager Panel */}
+				{showStorageManager && (
+					<div
+						className="modal-overlay"
+						onClick={() => setShowStorageManager(false)}
+					>
+						<div className="modal-container" onClick={(e) => e.stopPropagation()}>
+							<StorageManager onClose={() => setShowStorageManager(false)} />
+						</div>
+					</div>
+				)}
+
+				{/* Power Knowledge - Web Search & Research */}
+				<PowerKnowledge
+					isOpen={showPowerKnowledge}
+					onClose={() => setShowPowerKnowledge(false)}
+					onSendToChat={handlePowerKnowledgeResult}
+				/>
+
+				{/* File Converter */}
+				<FileConverter isOpen={showFileConverter} onClose={() => setShowFileConverter(false)} />
+
+				{/* Context Canvas - Persistent Documents */}
+				<ContextCanvas
+					isOpen={showContextCanvas}
+					onClose={() => {
+						setShowContextCanvas(false);
+						// Update token count when closing
+						const stats = getTokenStats();
+						setCanvasTokenCount(stats.usedTokens);
+					}}
+				/>
+
+				{/* Hidden file input */}
+				<input
+					type="file"
+					ref={fileInputRef}
+					style={{ display: "none" }}
+					onChange={handleFileAttach}
+					multiple
+					accept=".txt,.md,.json,.csv,.pdf,.js,.ts,.jsx,.tsx,.py,.html,.css"
+				/>
+
+				{/* Nexus Menu Bar */}
+				<div className="nexus-menubar">
+					<div className="menu-left">
+						{/* File Menu */}
+						<div className="menu-item">
+							<button type="button" className="menu-label" onClick={() => setShowFileMenu(!showFileMenu)}>
+								File
+							</button>
+							{showFileMenu && (
+								<div className="menu-dropdown">
+									<button
+										type="button"
+										className="menu-option"
+										onClick={() => {
+											handleNewChat();
+											setShowFileMenu(false);
+										}}
+									>
+										✨ New Chat
+									</button>
+									<button type="button" className="menu-option" onClick={handleClearHistory}>
+										🗑️ Clear Chat History
+									</button>
+									<button type="button" className="menu-option" onClick={handleExportChat}>
+										💾 Export Chat
+									</button>
+									<button
+										type="button"
+										className="menu-option"
+										onClick={() => {
+											setShowContextCanvas(true);
+											setShowFileMenu(false);
+										}}
+									>
+										📌 Context Canvas
+									</button>
+									<button
+										type="button"
+										className="menu-option"
+										onClick={() => {
+											setShowPromptManager(true);
+											setShowFileMenu(false);
+										}}
+									>
+										📋 Prompt Manager
+									</button>
+									<button
+										type="button"
+										className="menu-option"
+										onClick={() => {
+											setShowKnowledgePanel(true);
+											setShowFileMenu(false);
+										}}
+									>
+										🧠 Knowledge Base
+									</button>
+									<button
+										type="button"
+										className="menu-option"
+										onClick={() => {
+											setShowStorageManager(true);
+											setShowFileMenu(false);
+										}}
+									>
+										💾 Storage Manager
+									</button>
+									<button
+										type="button"
+										className="menu-option"
+										onClick={() => {
+											setShowFileConverter(true);
+											setShowFileMenu(false);
+										}}
+									>
+										🔄 File Converter
+									</button>
+								</div>
+							)}
+						</div>
+
+						{/* Output Menu */}
+						<div className="menu-item">
+							<button type="button" className="menu-label" onClick={() => setShowOutputMenu(!showOutputMenu)}>
+								Output
+							</button>
+							{showOutputMenu && (
+								<div className="menu-dropdown">
+									<button
+										type="button"
+										className="menu-option"
+										onClick={() => {
+											setShowImageGen(true);
+											setShowOutputMenu(false);
+										}}
+									>
+										📸 Generate Image
+									</button>
+									<button
+										type="button"
+										className="menu-option"
+										onClick={() => {
+											setShowVideoGen(true);
+											setShowOutputMenu(false);
+										}}
+									>
+										🎬 Generate Video
+									</button>
+								</div>
+							)}
+						</div>
+
+						{/* Tools - Power Knowledge */}
+						<button
+							type="button"
+							className="menu-label"
+							onClick={() => setShowPowerKnowledge(true)}
+							title="Web Search & Research"
+						>
+							🧠 Power Knowledge
+						</button>
+
+						{/* Account & Settings */}
+						<button type="button" className="menu-label" onClick={() => router.push("/account")}>
+							⚙️ Account
+						</button>
+					</div>
+
+					<div className="menu-right">
+						{/* Persona Toggle */}
+						<button
+							type="button"
+							className="persona-toggle-btn"
+							onClick={() => setShowPersonaPanel(true)}
+							title="Switch Character"
+						>
+							<span className="persona-toggle-avatar">
+								<Image src={charIconPath} alt={charName} width={32} height={32} className="persona-toggle-img" />
+							</span>
+							<span className="persona-toggle-name">{charName}</span>
+							<span className="persona-toggle-arrow">▼</span>
+						</button>
+
+						{byokMode && <span className="nexus-badge nexus-badge-primary">BYOK</span>}
+
+						<button type="button" className="nexus-btn nexus-btn-secondary nexus-btn-sm" onClick={handleSignOut}>
+							Sign Out
+						</button>
+					</div>
+				</div>
+
+				{/* Stats Ribbon - Desktop Style */}
+				<div className="stats-ribbon">
+					<div className="ribbon-stat ribbon-mood" title="AI Character Mood">
+						<span className="mood-emoji">{moodEmoji}</span>
+						<span className="mood-text">
+							{charName}: {moodText}
+						</span>
+						<button
+							type="button"
+							className="mood-reset-btn"
+							onClick={handleResetMood}
+							title="Reset mood to character default"
+						>
+							↻
+						</button>
+					</div>
+
+					<div className="ribbon-separator">•</div>
+
+					<div className="ribbon-stat ribbon-model-selector" onClick={() => setShowModelSelector(true)}>
+						<span className="ribbon-icon">🤖</span>
+						<span className="ribbon-label">Model:</span>
+						<span className="ribbon-value ribbon-model-value">
+							{currentModel ? getModelDisplayName(currentModel) : "Select Model"}
+							<span className="model-dropdown-arrow">▼</span>
+						</span>
+					</div>
+
+					{attachedFiles.length > 0 && (
+						<>
+							<div className="ribbon-separator">•</div>
+							<div className="ribbon-stat">
+								<span className="ribbon-icon">📎</span>
+								<span className="ribbon-value">{attachedFiles.length} file(s)</span>
+							</div>
+						</>
+					)}
+
+					{/* Context Canvas Indicator */}
+					<div className="ribbon-separator">•</div>
+					<div
+						className={`ribbon-stat ribbon-canvas ${canvasTokenCount > 0 ? "active" : ""}`}
+						onClick={() => setShowContextCanvas(true)}
+						title="Open Context Canvas - Pin documents for persistent AI context"
+					>
+						<span className="ribbon-icon">📌</span>
+						<span className="ribbon-label">Canvas:</span>
+						<span className="ribbon-value">
+							{canvasTokenCount > 0 ? `${Math.round(canvasTokenCount / 1000)}k tokens` : "Empty"}
+						</span>
+					</div>
+				</div>
+
+				{/* Modal Overlays */}
+				{showImageGen && (
+					<div
+						className="modal-overlay"
+						onClick={() => setShowImageGen(false)}
+					>
+						<div onClick={(e) => e.stopPropagation()}>
+							<ImageGenPanel
+								onClose={() => setShowImageGen(false)}
+								onImageGenerated={handleImageGenerated}
+								conversationContext={messages
+									.slice(-5)
+									.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : "[attachment]"}`)
+									.join("\n")}
+							/>
+						</div>
+					</div>
+				)}
+
+				{showVideoGen && (
+					<div
+						className="modal-overlay"
+						onClick={() => setShowVideoGen(false)}
+					>
+						<div onClick={(e) => e.stopPropagation()}>
+							<VideoGenPanel
+								onClose={() => setShowVideoGen(false)}
+								conversationContext={messages
+									.slice(-5)
+									.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : "[attachment]"}`)
+									.join("\n")}
+							/>
+						</div>
+					</div>
+				)}
+
+				{/* Model Selector Modal */}
+				{showModelSelector && (
+					<div
+						className="modal-overlay"
+						onClick={() => setShowModelSelector(false)}
+					>
+						<ModelSelector
+							currentModel={currentModel}
+							onSelect={(modelId) => {
+								setCurrentModel(modelId);
+								setSelectedModel("chat", modelId);
+								setShowModelSelector(false);
+							}}
+							onClose={() => setShowModelSelector(false)}
+						/>
+					</div>
+				)}
+
+				{/* Messages */}
+				<div className="chat-messages">
+					{messages.length === 0 && (
+						<div className="welcome-container">
+							<div className="welcome-avatar">
+								<Image src={charIconPath} alt={charName} width={80} height={80} className="elara-avatar-img elara-avatar-lg" />
+								<div className="elara-status-indicator" />
+							</div>
+							<h2 className="welcome-title">
+								Hey{userDisplayName && userDisplayName !== "User" ? `, ${userDisplayName.split(" ")[0]}` : ""}! 👋
+							</h2>
+							<p className="welcome-subtitle">I'm {charName}. What's on your mind today?</p>
+
+							<div className="quick-prompts">
+								<button type="button" className="quick-prompt" onClick={() => setShowImageGen(true)}>
+									📸 {charName} selfie
+								</button>
+								<button type="button" className="quick-prompt" onClick={() => setShowVideoGen(true)}>
+									🎬 {charName} video
+								</button>
+								<button
+									type="button"
+									className="quick-prompt"
+									onClick={() => setInput("Help me brainstorm ideas for...")}
+								>
+									💡 Brainstorm ideas
+								</button>
+								<button type="button" className="quick-prompt" onClick={() => setInput("Explain this concept: ")}>
+									📚 Explain something
+								</button>
+								<button type="button" className="quick-prompt" onClick={() => setInput("Write code that...")}>
+									💻 Write code
+								</button>
+								<button
+									type="button"
+									className="quick-prompt council-prompt"
+									onClick={() => setInput("[Council Mode] ")}
+									title="Consult the Council of Wisdom - all personas weigh in"
+								>
+									🏛️ Ask the Council
+								</button>
+							</div>
+						</div>
+					)}
+
+					{messages.map((msg, i) => (
+						<div key={msg.role === "user" ? `user-${i}` : `ai-${i}`} className={`chat-message ${msg.role === "user" ? "chat-message-user" : "chat-message-ai"}`}>
+							{msg.role === "assistant" && (
+								<div className="message-avatar">
+									<Image src={charIconPath} alt={charName} width={40} height={40} className="message-avatar-img" />
+								</div>
+							)}
+							<div className="message-content">
+								{/* Render AI thinking in collapsible section (desktop-style) */}
+								{msg.role === "assistant" && (msg as ChatMessageWithMedia).thinking && (
+									<details className="thinking-section">
+										<summary className="thinking-toggle">
+											<span className="thinking-icon">💭</span>
+											<span className="thinking-label">Show reasoning</span>
+										</summary>
+										<div className="thinking-content">{(msg as ChatMessageWithMedia).thinking}</div>
+									</details>
+								)}
+
+								{/* Render message content with markdown support */}
+								<MessageContent
+									content={
+										typeof msg.content === "string"
+											? msg.content
+											: msg.content.find((p) => p.type === "text")?.text || ""
+									}
+									role={msg.role}
+								/>
+
+								{/* Render generated image if present */}
+								{(msg as ChatMessageWithMedia).image && (
+									<div className="message-image-container">
+										{/* biome-ignore lint/performance/noImgElement: data URL requires native img element - Next.js Image doesn't support data URLs */}
+										<img
+											src={(msg as ChatMessageWithMedia).image?.dataUrl}
+											alt="Generated"
+											className="message-image"
+											onClick={() => {
+												const image = (msg as ChatMessageWithMedia).image;
+												if (image?.signedContent) {
+													handleDownloadImage(image.signedContent, image.prompt);
+												}
+											}}
+										/>
+										<div className="image-actions">
+											<button
+												type="button"
+												className="nexus-btn nexus-btn-primary nexus-btn-sm"
+												onClick={() => {
+													const image = (msg as ChatMessageWithMedia).image;
+													if (image?.signedContent) {
+														handleDownloadImage(image.signedContent, image.prompt);
+													}
+												}}
+											>
+												💾 Download with Metadata
+											</button>
+											<details className="image-metadata">
+												<summary>📋 Provenance</summary>
+												<pre>{(msg as ChatMessageWithMedia).image?.signedContent.metadataJson}</pre>
+											</details>
+										</div>
+									</div>
+								)}
+							</div>
+						</div>
+					))}
+
+					{sending && (
+						<div className="chat-message chat-message-ai">
+							<div className="message-avatar">
+								<Image src={charIconPath} alt={charName} width={40} height={40} className="message-avatar-img" />
+							</div>
+							<div className="message-content">
+								<div className="nexus-typing-indicator">
+									<span />
+									<span />
+									<span />
+								</div>
+							</div>
+						</div>
+					)}
+
+					<div ref={messagesEndRef} />
+				</div>
+
+				{/* Desktop-Style Input Area */}
+				<div className="chat-input-area">
+					{/* Attached Files Display */}
+					{attachedFiles.length > 0 && (
+						<div className="attached-files">
+							{attachedFiles.map((file, i) => (
+								<div key={`file-${file.name}-${i}`} className="attached-file">
+									<span className="file-icon">📄</span>
+									<span className="file-name">{file.name}</span>
+									<button type="button" className="file-remove" onClick={() => handleRemoveFile(i)}>
+										✕
+									</button>
+								</div>
+							))}
+						</div>
+					)}
+
+					<div className="chat-form">
+						{/* Quick Action Buttons - Selfie, Video & Context Canvas */}
+						<div className="quick-action-buttons">
+							<button
+								type="button"
+								className="quick-action-btn selfie-btn"
+								title={`Request a selfie from ${charName}`}
+								onClick={() => setShowImageGen(true)}
+							>
+								📸
+							</button>
+							<button
+								type="button"
+								className="quick-action-btn video-btn"
+								title={`Request a video from ${charName}`}
+								onClick={() => setShowVideoGen(true)}
+							>
+								🎬
+							</button>
+							<button
+								type="button"
+								className={`quick-action-btn canvas-btn ${canvasTokenCount > 0 ? "active" : ""}`}
+								title="Context Canvas - Pin documents"
+								onClick={() => setShowContextCanvas(true)}
+							>
+								📌
+							</button>
+						</div>
+
+						{/* Main Input */}
+						<textarea
+							ref={textareaRef}
+							className="chat-input"
+							value={input}
+							onChange={(e) => setInput(e.target.value)}
+							onKeyDown={handleKeyDown}
+							placeholder={
+								ctrlEnterSend ? `Message ${charName}... (Ctrl+Enter to send)` : `Message ${charName}... (Enter to send)`
+							}
+							rows={3}
+						/>
+
+						{/* Send Button with Attachments and Voice */}
+						<div className="send-button-stack">
+							<div className="send-attachments">
+								<button
+									type="button"
+									className="attach-btn"
+									title="Attach File"
+									onClick={() => fileInputRef.current?.click()}
+								>
+									📄
+								</button>
+								{/* Voice Input Button */}
+								{isSTTSupported() && (
+									<button
+										type="button"
+										className={`voice-btn ${isRecording ? "recording" : ""} ${transcribing ? "transcribing" : ""}`}
+										title={isRecording ? "Stop Recording" : transcribing ? "Transcribing..." : "Voice Input"}
+										onClick={handleVoiceToggle}
+										disabled={transcribing}
+									>
+										{transcribing ? "⏳" : isRecording ? "⏹️" : "🎤"}
+									</button>
+								)}
+								{isRecording && (
+									<button
+										type="button"
+										className="voice-cancel-btn"
+										title="Cancel Recording"
+										onClick={handleVoiceCancel}
+									>
+										✕
+									</button>
+								)}
+							</div>
+							<button type="button" className="send-btn-main" onClick={handleSend} disabled={sending || !input.trim()}>
+								{sending ? "..." : "Send"}
+							</button>
+
+							{/* Deep Thought Toggle */}
+							<div className="deep-thought-container">
+								<input
+									type="checkbox"
+									id="deep-thought-toggle"
+									checked={deepThoughtEnabled}
+									onChange={(e) => setDeepThoughtEnabled(e.target.checked)}
+								/>
+								<label htmlFor="deep-thought-toggle" title="Multi-turn agentic reasoning with tool calling">
+									🧠 Deep Thought
+								</label>
+								{deepThoughtEnabled && (
+									<input
+										type="number"
+										className="deep-thought-turns"
+										min="3"
+										max="20"
+										value={deepThoughtTurns}
+										onChange={(e) => setDeepThoughtTurns(Math.min(20, Math.max(3, parseInt(e.target.value, 10) || 10)))}
+										title="Maximum reasoning turns (3-20)"
+									/>
+								)}
+							</div>
+
+							{/* Keyboard Shortcut Toggle */}
+							<div className="keyboard-shortcut-container">
+								<input
+									type="checkbox"
+									id="ctrl-enter-toggle"
+									checked={ctrlEnterSend}
+									onChange={(e) => handleCtrlEnterToggle(e.target.checked)}
+								/>
+								<label htmlFor="ctrl-enter-toggle">⌨️ Ctrl+Enter</label>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<style jsx>{`
         .chat-container {
           display: flex;
           flex-direction: column;
@@ -2640,7 +2684,7 @@ export default function Chat() {
           }
         }
       `}</style>
-    </div>
-    </>
-  );
+			</div>
+		</>
+	);
 }

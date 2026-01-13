@@ -1,5 +1,80 @@
 # OpenElara Cloud - Copilot Instructions
 
+## 🚨 DEPLOYMENT SAFETY RULES 🚨
+
+```
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                    ⛔ ABSOLUTELY BANNED OPERATIONS ⛔                            ║
+║                                                                                 ║
+║  🚫 NEVER run: firebase deploy, gcloud deploy, npm publish, git push           ║
+║  🚫 NEVER run ANY deployment commands automatically                            ║
+║  🚫 NEVER run ANY command that modifies remote repositories                    ║
+║                                                                                 ║
+║  ✅ BEFORE deployment: Check firebase use, gcloud config get-value project     ║
+║  ✅ SUGGEST commands to user - let them execute                                ║
+║  ✅ HUMAN IN THE LOOP: User must verify project and approve deployment         ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+```
+
+**Deployment Protocol:**
+1. User must verify: `firebase use` shows correct project
+2. User must verify: `gcloud config get-value project` shows correct project
+3. Copilot suggests command
+4. User executes command manually
+
+## ⚠️ CRITICAL: This is a STANDALONE Application
+
+```
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                        STANDALONE APP PRINCIPLE                                 ║
+║                                                                                 ║
+║  🏠 openElaraCloud is COMPLETELY STANDALONE                                     ║
+║                                                                                 ║
+║  ✅ This app has its OWN COPIES of all shared code                              ║
+║  ✅ Seeing identical code here and in openElara = CORRECT                       ║
+║  ❌ NEVER import from architecture-review or openElara                          ║
+║  ❌ NEVER create dependencies to other projects                                 ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+```
+
+### Architecture Relationship
+
+```
+architecture-review/     ← SOURCE OF TRUTH (shared logic developed there)
+    │
+    │ COPY verbatim (not import)
+    │
+    ├──► openElara/          ← Desktop app (completely separate)
+    │
+    └──► openElaraCloud/     ← THIS APP (you are here)
+```
+
+**This app receives COPIES of proven logic from architecture-review.**
+**These become OUR code. We don't import them.**
+
+### Shared Code We Have Copies Of
+
+| File | Purpose | Origin |
+|------|---------|--------|
+| `src/lib/signing-core.ts` | ElaraSign v2.0 | architecture-review |
+
+### ❌ BANNED: Cross-Project Imports
+
+```typescript
+// NEVER DO THIS
+import { x } from '../../architecture-review/src/thing';
+import { x } from '../../openElara/src/lib/thing';
+```
+
+### ✅ CORRECT: Local Imports
+
+```typescript
+// Always import from our own codebase
+import { signImage } from '../lib/signing-core';
+```
+
+---
+
 ## ⚠️ CRITICAL: Firebase Project Configuration
 
 ```
@@ -23,7 +98,6 @@
 - `applied-ai-assistant`
 - `appliedai-companion`
 - `ai-code-assistant-5ee79`
-- `phillabor-ai-assistant`
 - `project-assigner`
 
 ---
@@ -148,5 +222,7 @@ Your app will be live at: `https://YOUR_PROJECT_ID.web.app`
 
 ## Related Projects
 
-- **openElara** (Desktop) - Full-featured desktop app with Code Studio
-- **OpenElara Cloud** (This repo) - Simplified cloud chat + generative AI
+| Project | Type | Relationship |
+|---------|------|--------------|
+| architecture-review | Source of Truth | We receive COPIES from here |
+| openElara | Desktop App (Electron) | Completely separate - NO imports |

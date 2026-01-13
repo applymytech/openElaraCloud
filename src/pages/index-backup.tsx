@@ -1,288 +1,283 @@
 /**
  * Login Page - Invite Only System
- * 
+ *
  * Users must be pre-created by admin in Firebase Console.
  * Supports email/password with password reset.
  */
 
-import { auth, db } from "@/lib/firebase";
-import { 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-  User 
-} from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, type User } from "firebase/auth";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import ELARA from "@/lib/elara";
+import { auth, db } from "@/lib/firebase";
 
 const DEFAULT_QUOTA_GB = 2; // Default storage quota for new users
 
 export default function Login() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [showResetForm, setShowResetForm] = useState(false);
+	const router = useRouter();
+	const [loading, setLoading] = useState(true);
+	const [email, setEmail] = useState("");
+	const [password, setPassword] = useState("");
+	const [error, setError] = useState<string | null>(null);
+	const [message, setMessage] = useState<string | null>(null);
+	const [isLoggingIn, setIsLoggingIn] = useState(false);
+	const [showResetForm, setShowResetForm] = useState(false);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        // Initialize user profile if first login
-        await initializeUserProfile(user);
-        // Go to account page first (user journey: login → account → chat)
-        router.push("/account");
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [router]);
+	useEffect(() => {
+		const unsubscribe = onAuthStateChanged(auth, async (user) => {
+			if (user) {
+				// Initialize user profile if first login
+				await initializeUserProfile(user);
+				// Go to account page first (user journey: login → account → chat)
+				router.push("/account");
+			}
+			setLoading(false);
+		});
+		return () => unsubscribe();
+	}, [router, initializeUserProfile]);
 
-  /**
-   * Initialize user profile in Firestore on first login
-   */
-  async function initializeUserProfile(user: User) {
-    const userRef = doc(db, "users", user.uid);
-    const userSnap = await getDoc(userRef);
+	/**
+	 * Initialize user profile in Firestore on first login
+	 */
+	async function initializeUserProfile(user: User) {
+		const userRef = doc(db, "users", user.uid);
+		const userSnap = await getDoc(userRef);
 
-    if (!userSnap.exists()) {
-      // First time login - create profile with default quota
-      await setDoc(userRef, {
-        email: user.email,
-        displayName: user.displayName || user.email?.split("@")[0],
-        photoURL: user.photoURL || null,
-        createdAt: serverTimestamp(),
-        lastLoginAt: serverTimestamp(),
-        quota: {
-          storageLimitGB: DEFAULT_QUOTA_GB,
-          storageUsedBytes: 0,
-        },
-        settings: {
-          theme: "nexus",
-          defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
-        },
-      });
-    } else {
-      // Update last login
-      await setDoc(userRef, { lastLoginAt: serverTimestamp() }, { merge: true });
-    }
-  }
+		if (!userSnap.exists()) {
+			// First time login - create profile with default quota
+			await setDoc(userRef, {
+				email: user.email,
+				displayName: user.displayName || user.email?.split("@")[0],
+				photoURL: user.photoURL || null,
+				createdAt: serverTimestamp(),
+				lastLoginAt: serverTimestamp(),
+				quota: {
+					storageLimitGB: DEFAULT_QUOTA_GB,
+					storageUsedBytes: 0,
+				},
+				settings: {
+					theme: "nexus",
+					defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+				},
+			});
+		} else {
+			// Update last login
+			await setDoc(userRef, { lastLoginAt: serverTimestamp() }, { merge: true });
+		}
+	}
 
-  const handleEmailSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setIsLoggingIn(true);
+	const handleEmailSignIn = async (e: React.FormEvent) => {
+		e.preventDefault();
+		setError(null);
+		setIsLoggingIn(true);
 
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle redirect
-    } catch (e: any) {
-      if (e.code === "auth/user-not-found") {
-        setError("No account found with this email. This is an invite-only system.");
-      } else if (e.code === "auth/wrong-password") {
-        setError("Incorrect password. Use 'Forgot Password' to reset.");
-      } else if (e.code === "auth/invalid-email") {
-        setError("Please enter a valid email address.");
-      } else if (e.code === "auth/too-many-requests") {
-        setError("Too many attempts. Please try again later or reset your password.");
-      } else {
-        setError(e.message);
-      }
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
+		try {
+			await signInWithEmailAndPassword(auth, email, password);
+			// onAuthStateChanged will handle redirect
+		} catch (e: any) {
+			if (e.code === "auth/user-not-found") {
+				setError("No account found with this email. This is an invite-only system.");
+			} else if (e.code === "auth/wrong-password") {
+				setError("Incorrect password. Use 'Forgot Password' to reset.");
+			} else if (e.code === "auth/invalid-email") {
+				setError("Please enter a valid email address.");
+			} else if (e.code === "auth/too-many-requests") {
+				setError("Too many attempts. Please try again later or reset your password.");
+			} else {
+				setError(e.message);
+			}
+		} finally {
+			setIsLoggingIn(false);
+		}
+	};
 
-  const handlePasswordReset = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setMessage(null);
+	const handlePasswordReset = async (e: React.FormEvent) => {
+		e.preventDefault();
+		setError(null);
+		setMessage(null);
 
-    if (!email) {
-      setError("Please enter your email address.");
-      return;
-    }
+		if (!email) {
+			setError("Please enter your email address.");
+			return;
+		}
 
-    try {
-      await sendPasswordResetEmail(auth, email);
-      setMessage("Password reset email sent! Check your inbox.");
-      setShowResetForm(false);
-    } catch (e: any) {
-      if (e.code === "auth/user-not-found") {
-        setError("No account found with this email.");
-      } else {
-        setError(e.message);
-      }
-    }
-  };
+		try {
+			await sendPasswordResetEmail(auth, email);
+			setMessage("Password reset email sent! Check your inbox.");
+			setShowResetForm(false);
+		} catch (e: any) {
+			if (e.code === "auth/user-not-found") {
+				setError("No account found with this email.");
+			} else {
+				setError(e.message);
+			}
+		}
+	};
 
-  if (loading) {
-    return (
-      <div className="center-content">
-        <div className="elara-logo">
-          <img src="/icon.png" alt="OpenElara" className="elara-logo-icon-img" />
-          <div className="elara-logo-text">
-            <span className="elara-logo-name">{ELARA.NAME}</span>
-          </div>
-        </div>
-        <div className="nexus-spinner" />
-      </div>
-    );
-  }
+	if (loading) {
+		return (
+			<div className="center-content">
+				<div className="elara-logo">
+					<img src="/icon.png" alt="OpenElara" className="elara-logo-icon-img" />
+					<div className="elara-logo-text">
+						<span className="elara-logo-name">{ELARA.NAME}</span>
+					</div>
+				</div>
+				<div className="nexus-spinner" />
+			</div>
+		);
+	}
 
-  return (
-    <div className="login-page">
-      {/* Stars Background Animation */}
-      <div className="stars-layer stars-1" />
-      <div className="stars-layer stars-2" />
-      <div className="stars-layer stars-3" />
-      
-      {/* Cover Background */}
-      <div className="cover-bg" />
-      <div className="cover-overlay" />
-      
-      {/* Floating Orbs */}
-      <div className="orb orb-1" />
-      <div className="orb orb-2" />
-      <div className="orb orb-3" />
-      
-      <div className="login-content">
-        {/* Logo */}
-        <div className="elara-logo">
-          <img src="/icon.png" alt="OpenElara" className="elara-logo-icon-img" />
-          <div className="elara-logo-text">
-            <span className="elara-logo-name">{ELARA.NAME}</span>
-            <span className="elara-logo-tagline">Your Sovereign AI</span>
-          </div>
-        </div>
+	return (
+		<div className="login-page">
+			{/* Stars Background Animation */}
+			<div className="stars-layer stars-1" />
+			<div className="stars-layer stars-2" />
+			<div className="stars-layer stars-3" />
 
-        <div className="form-container">
-        {/* Error/Message Display */}
-        {error && <div className="form-error">⚠️ {error}</div>}
-        {message && <div className="form-success">✓ {message}</div>}
+			{/* Cover Background */}
+			<div className="cover-bg" />
+			<div className="cover-overlay" />
 
-        {/* Login Form or Reset Form */}
-        {showResetForm ? (
-          <form onSubmit={handlePasswordReset}>
-            <h2 className="form-title">Reset Password</h2>
-            <p className="form-subtitle">Enter your email to receive a reset link.</p>
+			{/* Floating Orbs */}
+			<div className="orb orb-1" />
+			<div className="orb orb-2" />
+			<div className="orb orb-3" />
 
-            <div className="form-group">
-              <label className="nexus-label" htmlFor="reset-email">Email</label>
-              <input
-                id="reset-email"
-                type="email"
-                className="nexus-input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@company.com"
-                required
-                autoFocus
-              />
-            </div>
+			<div className="login-content">
+				{/* Logo */}
+				<div className="elara-logo">
+					<img src="/icon.png" alt="OpenElara" className="elara-logo-icon-img" />
+					<div className="elara-logo-text">
+						<span className="elara-logo-name">{ELARA.NAME}</span>
+						<span className="elara-logo-tagline">Your Sovereign AI</span>
+					</div>
+				</div>
 
-            <button type="submit" className="nexus-btn nexus-btn-primary nexus-btn-full">
-              Send Reset Link
-            </button>
+				<div className="form-container">
+					{/* Error/Message Display */}
+					{error && <div className="form-error">⚠️ {error}</div>}
+					{message && <div className="form-success">✓ {message}</div>}
 
-            <button
-              type="button"
-              className="nexus-btn nexus-btn-ghost nexus-btn-full"
-              onClick={() => {
-                setShowResetForm(false);
-                setError(null);
-              }}
-              style={{ marginTop: '12px' }}
-            >
-              ← Back to Sign In
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleEmailSignIn}>
-            <div className="form-group">
-              <label className="nexus-label" htmlFor="email">Email</label>
-              <input
-                id="email"
-                type="email"
-                className="nexus-input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@company.com"
-                required
-                autoFocus
-              />
-            </div>
+					{/* Login Form or Reset Form */}
+					{showResetForm ? (
+						<form onSubmit={handlePasswordReset}>
+							<h2 className="form-title">Reset Password</h2>
+							<p className="form-subtitle">Enter your email to receive a reset link.</p>
 
-            <div className="form-group">
-              <label className="nexus-label" htmlFor="password">Password</label>
-              <input
-                id="password"
-                type="password"
-                className="nexus-input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-              />
-            </div>
+							<div className="form-group">
+								<label className="nexus-label" htmlFor="reset-email">
+									Email
+								</label>
+								<input
+									id="reset-email"
+									type="email"
+									className="nexus-input"
+									value={email}
+									onChange={(e) => setEmail(e.target.value)}
+									placeholder="you@company.com"
+									required
+								/>
+							</div>
 
-            <button 
-              type="submit" 
-              className="nexus-btn nexus-btn-primary nexus-btn-full"
-              disabled={isLoggingIn}
-            >
-              {isLoggingIn ? (
-                <>
-                  <span className="nexus-spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
-                  Signing in...
-                </>
-              ) : (
-                "Sign In"
-              )}
-            </button>
+							<button type="submit" className="nexus-btn nexus-btn-primary nexus-btn-full">
+								Send Reset Link
+							</button>
 
-            <button
-              type="button"
-              className="nexus-btn nexus-btn-ghost nexus-btn-full"
-              onClick={() => {
-                setShowResetForm(true);
-                setError(null);
-                setMessage(null);
-              }}
-              style={{ marginTop: '12px' }}
-            >
-              Forgot Password?
-            </button>
-          </form>
-        )}
+							<button
+								type="button"
+								className="nexus-btn nexus-btn-ghost nexus-btn-full"
+								onClick={() => {
+									setShowResetForm(false);
+									setError(null);
+								}}
+								style={{ marginTop: "12px" }}
+							>
+								← Back to Sign In
+							</button>
+						</form>
+					) : (
+						<form onSubmit={handleEmailSignIn}>
+							<div className="form-group">
+								<label className="nexus-label" htmlFor="email">
+									Email
+								</label>
+								<input
+									id="email"
+									type="email"
+									className="nexus-input"
+									value={email}
+									onChange={(e) => setEmail(e.target.value)}
+									placeholder="you@company.com"
+									required
+								/>
+							</div>
 
-        <div className="divider">Invite Only</div>
+							<div className="form-group">
+								<label className="nexus-label" htmlFor="password">
+									Password
+								</label>
+								<input
+									id="password"
+									type="password"
+									className="nexus-input"
+									value={password}
+									onChange={(e) => setPassword(e.target.value)}
+									placeholder="••••••••"
+									required
+								/>
+							</div>
 
-        {/* Invite Only Notice */}
-        <div className="invite-notice">
-          <p>🔒 This is a private instance of {ELARA.NAME}.</p>
-          <p>Interested in access?</p>
-        </div>
-        
-        <a 
-          href="mailto:openelara@applymytech.ai?subject=OpenElara%20Cloud%20Access%20Request"
-          className="nexus-btn nexus-btn-secondary nexus-btn-full apply-btn"
-        >
-          📧 Apply for Account
-        </a>
-      </div>
+							<button type="submit" className="nexus-btn nexus-btn-primary nexus-btn-full" disabled={isLoggingIn}>
+								{isLoggingIn ? (
+									<>
+										<span className="nexus-spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
+										Signing in...
+									</>
+								) : (
+									"Sign In"
+								)}
+							</button>
 
-        {/* Footer */}
-        <div className="login-footer">
-          <span>Powered by BYOK (Bring Your Own Key)</span>
-        </div>
-      </div>
+							<button
+								type="button"
+								className="nexus-btn nexus-btn-ghost nexus-btn-full"
+								onClick={() => {
+									setShowResetForm(true);
+									setError(null);
+									setMessage(null);
+								}}
+								style={{ marginTop: "12px" }}
+							>
+								Forgot Password?
+							</button>
+						</form>
+					)}
 
-      <style jsx>{`
+					<div className="divider">Invite Only</div>
+
+					{/* Invite Only Notice */}
+					<div className="invite-notice">
+						<p>🔒 This is a private instance of {ELARA.NAME}.</p>
+						<p>Interested in access?</p>
+					</div>
+
+					<a
+						href="mailto:openelara@applymytech.ai?subject=OpenElara%20Cloud%20Access%20Request"
+						className="nexus-btn nexus-btn-secondary nexus-btn-full apply-btn"
+					>
+						📧 Apply for Account
+					</a>
+				</div>
+
+				{/* Footer */}
+				<div className="login-footer">
+					<span>Powered by BYOK (Bring Your Own Key)</span>
+				</div>
+			</div>
+
+			<style jsx>{`
         .login-page {
           position: relative;
           min-height: 100vh;
@@ -563,6 +558,6 @@ export default function Login() {
           }
         }
       `}</style>
-    </div>
-  );
+		</div>
+	);
 }

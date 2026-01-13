@@ -1,0 +1,2 @@
+# This file ensures the working-docs folder exists in git
+# while the actual contents are gitignored
