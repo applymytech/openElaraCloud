@@ -8,7 +8,7 @@ service cloud.firestore {
 
     // IMPORTANT: Replace 'YOUR_EMAIL@example.com' with the email you use for Firebase login.
     function isAllowedUser() {
-      return request.auth != null && request.auth.token.email == "YOUR_EMAIL@example.com";
+      return request.auth != null && request.auth.token.email == "andrewquartly@applymytech.ai";
     }
 
     // Helper function: Is this the user's own document?

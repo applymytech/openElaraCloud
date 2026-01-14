@@ -54,3 +54,9 @@ build_demo_from_desktop_app/
 # Local deploy scripts (use *.template files to create your own)
 deploy.ps1
 deploy.sh
+
+# Secrets and Generated Configs
+firestore.rules
+storage.rules
+deploy.config.json
+

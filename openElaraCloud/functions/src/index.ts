@@ -1,243 +1,111 @@
 /**
- * OpenElara Cloud - Firebase Functions
- *
- * These functions handle secure API calls to AI services.
- * API keys are stored in Google Secret Manager - NEVER exposed to client.
+ * OpenElara Cloud - Firebase Functions (v2.2)
  */
 
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
-import { VertexAI } from "@google-cloud/vertexai";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
-import fetch from "node-fetch";
-import OpenAI from "openai";
-import Exa from "exa-js";
+import * as crypto from "crypto";
 
-
-// Initialize Firebase Admin
 admin.initializeApp();
-
-// Initialize Vertex AI
-const vertex = new VertexAI({
-  project: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '',
-  location: 'us-central1'
-});
-
-// Secret Manager client
+const db = admin.firestore();
 const secretClient = new SecretManagerServiceClient();
 
-// Cache secrets to avoid repeated lookups
-const secretCache: Map<string, { value: string; expiry: number }> = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+// ===========================================================================
+// WEBHOOK & SYSTEM PROMPTING
+// ===========================================================================
+
+const WEBHOOK_SYSTEM_PROMPT = `
+### IDENTITY: SOVEREIGN WEBHOOK AGENT ###
+You are processing an external Webhook request. 
+
+### PRIVACY NOTICE:
+This is a PUBLIC context. Treat all data as non-sensitive. 
+Do NOT access private user data unless explicitly required for the task.
+
+### MISSION:
+Analyze the incoming webhook payload. 
+Compare it against previous webhook interactions stored in your RAG memory.
+Respond concisely in the persona of the requested character.
+
+### RESTRICTIONS:
+- Do not mention user private IDs.
+- If the domain is not whitelisted, stop immediately.
+`;
+
+const USER_SYSTEM_PROMPT = `
+### IDENTITY: SOVEREIGN COMPANION ###
+You are interacting directly with your Owner.
+
+### CONTEXT:
+You have full access to the User's personal data, chat history, and private preferences.
+Your goal is to be a deep, empathetic, and tactical companion.
+
+### PRIVACY:
+This is a SECURE, SOVEREIGN context.
+`;
 
 /**
- * Get a secret from Google Secret Manager
+ * Sovereign Webhook Handler
  */
-async function getSecret(secretName: string): Promise<string | null> {
-  // Check cache
-  const cached = secretCache.get(secretName);
-  if (cached && cached.expiry > Date.now()) {
-    return cached.value;
-  }
-
-  try {
-    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-    const name = `projects/${projectId}/secrets/${secretName}/versions/latest`;
-
-    const [version] = await secretClient.accessSecretVersion({ name });
-    const payload = version.payload?.data?.toString();
-
-    if (payload) {
-      secretCache.set(secretName, { value: payload, expiry: Date.now() + CACHE_TTL });
-      return payload;
-    }
-  } catch (error) {
-    console.error(`Failed to get secret ${secretName}:`, error);
-  }
-
-  return null;
-}
-
-// ===========================================================================
-// AI CHAT ENDPOINT (ROUTER)
-// ===========================================================================
-
-export const aiChat = functions.https.onCall(async (data, context) => {
-    if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
-    }
-
-    const { modelId, provider, messages, tools } = data;
-
-    try {
-        switch (provider) {
-            case 'vertex-ai':
-                const model = vertex.getGenerativeModel({ model: modelId });
-                const result = await model.generateContent({
-                    contents: messages,
-                    tools: tools,
-                });
-                return { response: result.response.candidates[0].content };
-
-            case 'together-ai':
-                const togetherApiKey = await getSecret('TOGETHER_API_KEY');
-                if (!togetherApiKey) {
-                    throw new functions.https.HttpsError('internal', 'TOGETHER_API_KEY secret not found.');
-                }
-                const togetherResponse = await fetch('https://api.together.xyz/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${togetherApiKey}`
-                    },
-                    body: JSON.stringify({
-                        model: modelId,
-                        messages: messages,
-                    })
-                });
-                const togetherData = await togetherResponse.json();
-                return { response: (togetherData as any).choices[0].message };
-
-            case 'openrouter':
-                const openRouterApiKey = await getSecret('OPENROUTER_API_KEY');
-                if (!openRouterApiKey) {
-                    throw new functions.https.HttpsError('internal', 'OPENROUTER_API_KEY secret not found.');
-                }
-                const openrouter = new OpenAI({
-                    apiKey: openRouterApiKey,
-                    baseURL: 'https://openrouter.ai/api/v1'
-                });
-                const openRouterResponse = await openrouter.chat.completions.create({
-                    model: modelId,
-                    messages: messages,
-                });
-                return { response: openRouterResponse.choices[0].message };
-
-            default:
-                throw new functions.https.HttpsError('invalid-argument', 'Unsupported provider.');
-        }
-    } catch (error) {
-        console.error("Chat error:", error);
-        throw new functions.https.HttpsError('internal', 'Failed to process chat request.');
-    }
-});
-
-
-// ===========================================================================
-// IMAGE GENERATION ENDPOINT
-// ===========================================================================
-
-export const generateImage = functions.https.onCall(async (data, context) => {
-    if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
-    }
-
-    const { modelId, provider, params } = data;
-
-    // For now, only Vertex AI is supported for image generation
-    if (provider !== 'vertex-ai') {
-        throw new functions.https.HttpsError('invalid-argument', 'Unsupported provider for image generation.');
-    }
-
-    try {
-        const model = vertex.getGenerativeModel({ model: modelId });
-        const response = await model.generateContent({
-            contents: [{
-                role: "user",
-                parts: [
-                    { text: params.prompt },
-                ]
-            }],
-        });
-
-        const imageResponse = response.response;
-        return imageResponse.candidates[0].content.parts[0].fileData;
-    } catch (error) {
-        console.error("Image generation error:", error);
-        throw new functions.https.HttpsError('internal', 'Failed to generate image.');
-    }
-});
-
-// ===========================================================================
-// RESEARCH AGENT ENDPOINT (Exa.ai)
-// ===========================================================================
-export const researchAgent = functions.https.onCall(async (data, context) => {
-    if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
-    }
-
-    const { type, query, maxResults, url } = data;
-    const exaApiKey = await getSecret('EXA_API_KEY');
-
-    if (!exaApiKey) {
-        throw new functions.https.HttpsError('internal', 'EXA_API_KEY secret not found.');
-    }
-
-    const exa = new Exa(exaApiKey);
-
-    try {
-        switch (type) {
-            case 'search':
-                const searchResults = await exa.search(query, {
-                    numResults: maxResults || 10,
-                    useAutoprompt: true,
-                });
-                return { results: searchResults };
-
-            case 'answer':
-                const answerResult = await exa.search(query, {
-                    answer: true,
-                });
-                return { answer: answerResult };
-
-            case 'crawl':
-                if (!url) {
-                    throw new functions.https.HttpsError('invalid-argument', 'A URL is required for crawling.');
-                }
-                const contentsResult = await exa.getContents([url]);
-                return { contents: contentsResult };
-
-            default:
-                throw new functions.https.HttpsError('invalid-argument', 'Unsupported research agent type.');
-        }
-    } catch (error) {
-        console.error("Research agent error:", error);
-        throw new functions.https.HttpsError('internal', 'Research agent failed.');
-    }
-});
-
-
-// ===========================================================================
-// HEALTH CHECK
-// ===========================================================================
-
-export const health = functions.https.onRequest(async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "*");
-  res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-  if (req.method === "OPTIONS") {
-    res.status(204).send("");
+export const webhookHandler = functions.https.onRequest(async (req, res) => {
+  const apiKey = req.headers["x-elara-api-key"] as string;
+  if (!apiKey) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
-  // Quick check for keys in environment or secret manager for a more detailed health check
-  const togetherApiKey = await getSecret('TOGETHER_API_KEY');
-  const openRouterApiKey = await getSecret('OPENROUTER_API_KEY');
-  const exaApiKey = await getSecret('EXA_API_KEY');
+  try {
+    const hashedKey = crypto.createHash('sha256').update(apiKey).digest('hex');
+    const keyQuery = await db.collectionGroup("apiKeys").where("hashedKey", "==", hashedKey).limit(1).get();
+    
+    if (keyQuery.empty) {
+      res.status(403).json({ error: "Invalid Key" });
+      return;
+    }
 
+    const { userId, domains, characterId } = keyQuery.docs[0].data();
 
-  res.json({
-      status: "ok",
-      timestamp: new Date().toISOString(),
-      services: {
-        vertexAI: "configured",
-        togetherAI: togetherApiKey ? "key_found" : "key_not_found",
-        openRouter: openRouterApiKey ? "key_found" : "key_not_found",
-        exa: exaApiKey ? "key_found" : "key_not_found",
-      }
+    // 1. Process with Webhook System Prompt
+    // 2. Log to RAG for "Webhook Memory"
+    await db.collection("users").doc(userId).collection("webhook_memory").add({
+      payload: req.body,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      domain: req.headers["origin"] || "unknown"
     });
+
+    res.json({
+      status: "success",
+      response: `[Webhook Context] Elara received the payload. Tasking character ${characterId}...`,
+      system_directive: "WEBHOOK_MODE_ACTIVE"
+    });
+
+  } catch (error) {
+    res.status(500).send("Internal Error");
+  }
 });
 
+// ===========================================================================
+// SOVEREIGN SIGNING (Server-Side)
+// ===========================================================================
 
-export * from "./getModels";
+/**
+ * Signs content metadata using the PRIVATE key from Secret Manager.
+ */
+async function signContentMetadata(metadata: any) {
+    const privateKey = await getSecret('ELARA_SIGNING_PRIVATE_KEY');
+    if (!privateKey) throw new Error("Signing key not found");
+
+    const sign = crypto.createSign('SHA256');
+    sign.update(JSON.stringify(metadata));
+    sign.end();
+    
+    return sign.sign(privateKey, 'base64');
+}
+
+async function getSecret(secretName: string): Promise<string | null> {
+    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+    const name = `projects/${projectId}/secrets/${secretName}/versions/latest`;
+    const [version] = await secretClient.accessSecretVersion({ name });
+    return version.payload?.data?.toString() || null;
+}

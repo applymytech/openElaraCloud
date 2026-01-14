@@ -1,0 +1,6 @@
+{
+  "adminEmail": "REPLACE_WITH_YOUR_EMAIL@example.com",
+  "defaultStorageQuotaGB": 2,
+  "firestoreRulesFile": "firestore.rules",
+  "storageRulesFile": "storage.rules"
+}

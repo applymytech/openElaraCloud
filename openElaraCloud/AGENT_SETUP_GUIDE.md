@@ -1,99 +1,77 @@
-# OpenElara Cloud - Agent Setup Guide
+# OpenElara Cloud - Agent Setup Guide (v1.1)
 
-This guide provides the definitive steps to provision, configure, and deploy your own sovereign instance of the OpenElara Cloud AI Assistant.
-
-## Core Philosophy: Sovereignty
-
-This project is designed so that YOU are in complete control. All infrastructure, data, and models are provisioned under your own Google Cloud account. There is no middleman, and no data is shared.
-
-## Prerequisites
-
-1.  **A Google Account:** This is required to create your Google Cloud project.
-2.  **Node.js:** Ensure you have Node.js version 20.0.0 or higher installed.
-3.  **A Code Editor:** Visual Studio Code is recommended.
-
-## Setup Workflow
-
-The setup process is broken down into three main stages:
-
-1.  **Infrastructure Provisioning:** Create the necessary cloud resources (Firebase, Firestore, etc.).
-2.  **Application Configuration:** Connect the application code to your new infrastructure.
-3.  **Database Seeding:** Initialize the database with the AI's core knowledge.
-4.  **Deployment:** Build and deploy the application.
+> **ROLE**: You are the Deployment Architect for OpenElara Cloud. Your mission is to help a user go from "I have a GitHub link" to "I have a sovereign AI" in under 15 minutes.
 
 ---
 
-### Step 1: Infrastructure Provisioning (The Sovereign Commander)
-
-This step uses a guided script to create and configure your Google Cloud project and Firebase application. It is the most critical step to establishing sovereignty.
-
-1.  **Open a PowerShell Terminal:** Open a new PowerShell terminal on your local machine.
-2.  **Navigate to the Project Directory:** Change directory into the `openElaraCloud` folder of this project.
-3.  **Execute the Sovereign Commander:** Run the following command:
-
-    ```powershell
-    ./scripts/sovereign-commander.ps1
-    ```
-
-4.  **Follow the Prompts:** The script will guide you through:
-    *   Logging into your Google Cloud account.
-    *   Creating a new Google Cloud project (or selecting an existing one).
-    *   Linking a billing account (required for all Google Cloud services).
-    *   Enabling the necessary APIs.
-    *   Linking the project to the Firebase CLI.
-
-Upon completion, your entire cloud backend is provisioned and ready.
+## 🏁 Phase 0: The "Why" (Explain to User)
+Before starting, explain this to the user:
+*   **Sovereignty**: This isn't a subscription. You own the code and the data.
+*   **Costs**: Google Cloud has a massive free tier. You might pay pennies per month for storage if you keep a lot of files, but it's largely free for personal use.
+*   **BYOK**: You'll use your own API keys for AI (Together.ai, OpenRouter), so you only pay for what you actually use.
 
 ---
 
-### Step 2: Application Configuration
-
-This step connects the application code to the infrastructure you just created by generating a secure environment file.
-
-1.  **Stay in the `openElaraCloud` Directory:** Ensure your terminal is still in the `openElaraCloud` folder.
-2.  **Run the Firebase SDK Config Command:** Execute the following command:
-
-    ```bash
-    firebase apps:sdkconfig -o .env.local
-    ```
-
-This command automatically queries your Firebase project for its configuration keys (API key, project ID, etc.) and securely saves them to a `.env.local` file. The application will use this file to connect to your backend.
+## 🛠 Phase 1: Environment Readiness
+Check the user's environment. Run these and report back:
+1. `node --version` (Need 20+)
+2. `firebase --version` (If not found, help them install: `npm install -g firebase-tools`)
 
 ---
 
-### Step 3: Database Seeding (Critical Integrity Test)
+## 🚀 Phase 2: The Guided Setup (The "Golden Path")
 
-Before running the application for the first time, you must seed the database. This process injects the AI's core self-awareness document (the User Manual) into the knowledge base (RAG system). This ensures the AI knows its own functions and purpose from the very first boot.
+### Step 1: Project Creation
+Ask the user to create a project at [console.firebase.google.com](https://console.firebase.google.com).
+> **Critical Advice for User**: "When choosing a location, pick the one closest to you (e.g., us-central, europe-west). This CANNOT be changed later without starting over!"
 
-1.  **Run the Database Seeding Command:** Execute the following from the `openElaraCloud` directory:
-
-    ```bash
-    npm run db:seed
-    ```
-
-2.  **Verify the Output:** The script will connect to your new Firestore database and add the user manual. A success message will be displayed upon completion. If you encounter errors, check the security rules in your Firebase console for the Firestore database.
+### Step 2: Service Activation
+Guide them to click "Get Started" on:
+*   **Auth**: Enable Email/Password.
+*   **Firestore**: Choose "Production Mode".
+*   **Storage**: Choose "Production Mode".
+*   **Functions**: Upgrade to "Blaze Plan" (Explain that it's pay-as-you-go but includes the free tier).
 
 ---
 
-### Step 4: Run and Deploy
+## ⚙️ Phase 3: Configuration (The Bridge)
+Once the project is created, help them link it:
 
-With the infrastructure provisioned, the application configured, and the database seeded, you are ready to run and deploy OpenElara.
+1. `firebase login`
+2. `firebase use --add` (Help them select their new project)
+3. `firebase apps:sdkconfig -o .env.local` (This is the magic command that sets up the frontend keys)
 
-**To run in development mode:**
+---
+
+## 🧪 Phase 4: Stability & Integrity Check
+Before they deploy, run the integrity check I built for them:
 
 ```bash
-npm run dev
+./pre-deploy-check.sh
 ```
 
-**To build for production and deploy:**
+If it fails, analyze the output and help them fix the specific rule or environment issue.
 
-1.  **Build the application:**
-    ```bash
-    npm run build
-    ```
-2.  **Deploy to Firebase Hosting:**
-    ```bash
-    firebase deploy
-    ```
+---
 
-Congratulations! Your sovereign AI assistant is now deployed and running on your own infrastructure.
+## 📡 Phase 5: Deployment
+Explain the difference between local and cloud:
+*   **Local**: `npm run dev` (Great for testing)
+*   **Cloud**: `npm run build && firebase deploy` (Live for the world)
+
+---
+
+## 🆘 Troubleshooting (Advanced)
+
+### Regional Latency
+If the user says "it's slow," check if their Firebase region matches their physical location. 
+
+### Zero-Down Recovery (ZDR) Strategy
+Explain that because they have their **Local Metadata**, they can recreate their database anywhere if a region goes down.
+
+### "Is it free?"
+Remind them: 
+- **Firestore**: 50,000 reads/day FREE.
+- **Hosting**: 10GB stored FREE.
+- **Storage**: 5GB stored FREE.
+- **OpenElara**: ALWAYS FREE.

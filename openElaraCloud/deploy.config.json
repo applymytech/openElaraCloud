@@ -1,5 +1,5 @@
 {
-  "adminEmail": "YOUR_EMAIL@example.com",
+  "adminEmail": "andrewquartly@applymytech.ai",
   "defaultStorageQuotaGB": 2,
   "firestoreRulesFile": "firestore.rules",
   "storageRulesFile": "storage.rules"

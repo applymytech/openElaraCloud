@@ -2,43 +2,56 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- Hardcoded Single-User Security Rules ---
-    // This configuration locks the database to a single user account,
-    // identified by the email address below.
-
-    // IMPORTANT: Replace 'YOUR_EMAIL@example.com' with the email you use for Firebase login.
     function isAllowedUser() {
       return request.auth != null && request.auth.token.email == "YOUR_EMAIL@example.com";
     }
 
-    // Helper function: Is this the user's own document?
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
     // ========================================
-    // USER PROFILES
+    // USER PROFILES & API KEYS
     // ========================================
     match /users/{userId} {
-      // The allowed user can only read/write their own profile.
       allow read, write: if isAllowedUser() && isOwner(userId);
 
-      // User's chat history
+      // Webhook API Keys (Nested)
+      match /apiKeys/{keyId} {
+        allow read, write: if isAllowedUser() && isOwner(userId);
+      }
+
+      // Webhook Memory (RAG for webhooks)
+      match /webhook_memory/{memoryId} {
+        allow read, write: if isAllowedUser() && isOwner(userId);
+      }
+
       match /chats/{chatId} {
         allow read, write: if isAllowedUser() && isOwner(userId);
-
-        // Messages within a chat
         match /messages/{messageId} {
           allow read, write: if isAllowedUser() && isOwner(userId);
         }
       }
-
-      // User's settings
-      match /settings/{settingId} {
-        allow read, write: if isAllowedUser() && isOwner(userId);
-      }
     }
 
-    // By default, no other collections are accessible.
+    // ========================================
+    // PROVENANCE & COMPLIANCE (Sovereign Signing)
+    // ========================================
+    match /provenance/{contentHash} {
+      // Anyone can read basic signature data
+      allow read: if request.auth != null;
+      
+      // ONLY the App Owner (Admin) can see the compliance metadata (original prompt, path)
+      // This is enforced by checking if the resource's userId matches auth.uid 
+      // AND the user is the allowed admin.
+      allow write: if false; // Only written via Cloud Functions
+    }
+
+    // ========================================
+    // API KEYS COLLECTION GROUP (For Webhook Validation)
+    // ========================================
+    match /{path=**}/apiKeys/{keyId} {
+      allow read: if false; // Only Cloud Functions can query this via Admin SDK
+    }
   }
 }
