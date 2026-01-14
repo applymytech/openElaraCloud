@@ -1,16 +1,27 @@
 /**
  * OpenElara Cloud - Firebase Functions
- * 
+ *
  * These functions handle secure API calls to AI services.
  * API keys are stored in Google Secret Manager - NEVER exposed to client.
  */
 
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
+import { VertexAI } from "@google-cloud/vertexai";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
+import fetch from "node-fetch";
+import OpenAI from "openai";
+import Exa from "exa-js";
+
 
 // Initialize Firebase Admin
 admin.initializeApp();
+
+// Initialize Vertex AI
+const vertex = new VertexAI({
+  project: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '',
+  location: 'us-central1'
+});
 
 // Secret Manager client
 const secretClient = new SecretManagerServiceClient();
@@ -32,10 +43,10 @@ async function getSecret(secretName: string): Promise<string | null> {
   try {
     const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
     const name = `projects/${projectId}/secrets/${secretName}/versions/latest`;
-    
+
     const [version] = await secretClient.accessSecretVersion({ name });
     const payload = version.payload?.data?.toString();
-    
+
     if (payload) {
       secretCache.set(secretName, { value: payload, expiry: Date.now() + CACHE_TTL });
       return payload;
@@ -43,199 +54,190 @@ async function getSecret(secretName: string): Promise<string | null> {
   } catch (error) {
     console.error(`Failed to get secret ${secretName}:`, error);
   }
-  
+
   return null;
 }
 
-/**
- * Verify the request is from an authenticated user
- */
-async function verifyAuth(request: functions.https.Request): Promise<admin.auth.DecodedIdToken | null> {
-  const authHeader = request.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    return null;
-  }
+// ===========================================================================
+// AI CHAT ENDPOINT (ROUTER)
+// ===========================================================================
 
-  const idToken = authHeader.split("Bearer ")[1];
-  try {
-    return await admin.auth().verifyIdToken(idToken);
-  } catch {
-    return null;
-  }
-}
+export const aiChat = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    }
 
-// ============================================================================
-// AI CHAT ENDPOINT
-// ============================================================================
+    const { modelId, provider, messages, tools } = data;
 
-export const aiChat = functions.https.onRequest(async (req, res) => {
-  // CORS
-  res.set("Access-Control-Allow-Origin", "*");
-  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  
-  if (req.method === "OPTIONS") {
-    res.status(204).send("");
-    return;
-  }
+    try {
+        switch (provider) {
+            case 'vertex-ai':
+                const model = vertex.getGenerativeModel({ model: modelId });
+                const result = await model.generateContent({
+                    contents: messages,
+                    tools: tools,
+                });
+                return { response: result.response.candidates[0].content };
 
-  if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
-    return;
-  }
+            case 'together-ai':
+                const togetherApiKey = await getSecret('TOGETHER_API_KEY');
+                if (!togetherApiKey) {
+                    throw new functions.https.HttpsError('internal', 'TOGETHER_API_KEY secret not found.');
+                }
+                const togetherResponse = await fetch('https://api.together.xyz/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${togetherApiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: modelId,
+                        messages: messages,
+                    })
+                });
+                const togetherData = await togetherResponse.json();
+                return { response: (togetherData as any).choices[0].message };
 
-  // Verify authentication
-  const user = await verifyAuth(req);
-  if (!user) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+            case 'openrouter':
+                const openRouterApiKey = await getSecret('OPENROUTER_API_KEY');
+                if (!openRouterApiKey) {
+                    throw new functions.https.HttpsError('internal', 'OPENROUTER_API_KEY secret not found.');
+                }
+                const openrouter = new OpenAI({
+                    apiKey: openRouterApiKey,
+                    baseURL: 'https://openrouter.ai/api/v1'
+                });
+                const openRouterResponse = await openrouter.chat.completions.create({
+                    model: modelId,
+                    messages: messages,
+                });
+                return { response: openRouterResponse.choices[0].message };
 
-  // Get API key from Secret Manager
-  const apiKey = await getSecret("TOGETHER_API_KEY");
-  if (!apiKey) {
-    res.status(500).json({ 
-      error: "API key not configured",
-      hint: "Add TOGETHER_API_KEY to Google Secret Manager" 
-    });
-    return;
-  }
-
-  try {
-    const { messages, model, temperature } = req.body;
-    // Note: max_tokens intentionally omitted - let API auto-calculate available tokens
-    // This prevents "token count exceeds context length" errors
-
-    const response = await fetch("https://api.together.xyz/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: model || "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
-        messages,
-        temperature: temperature ?? 0.7,
-        // max_tokens omitted: API will use (context_length - input_tokens)
-      }),
-    });
-
-    const data = await response.json();
-    
-    // Log usage for the user (optional analytics)
-    await admin.firestore()
-      .collection("users")
-      .doc(user.uid)
-      .collection("usage")
-      .add({
-        type: "chat",
-        model,
-        tokens: data.usage?.total_tokens || 0,
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-    res.json(data);
-  } catch (error) {
-    console.error("Chat error:", error);
-    res.status(500).json({ error: "Failed to process chat request" });
-  }
+            default:
+                throw new functions.https.HttpsError('invalid-argument', 'Unsupported provider.');
+        }
+    } catch (error) {
+        console.error("Chat error:", error);
+        throw new functions.https.HttpsError('internal', 'Failed to process chat request.');
+    }
 });
 
-// ============================================================================
+
+// ===========================================================================
 // IMAGE GENERATION ENDPOINT
-// ============================================================================
+// ===========================================================================
 
-export const generateImage = functions.https.onRequest(async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "*");
-  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  
-  if (req.method === "OPTIONS") {
-    res.status(204).send("");
-    return;
-  }
+export const generateImage = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    }
 
-  if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
-    return;
-  }
+    const { modelId, provider, params } = data;
 
-  const user = await verifyAuth(req);
-  if (!user) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+    // For now, only Vertex AI is supported for image generation
+    if (provider !== 'vertex-ai') {
+        throw new functions.https.HttpsError('invalid-argument', 'Unsupported provider for image generation.');
+    }
 
-  const apiKey = await getSecret("TOGETHER_API_KEY");
-  if (!apiKey) {
-    res.status(500).json({ error: "API key not configured" });
-    return;
-  }
+    try {
+        const model = vertex.getGenerativeModel({ model: modelId });
+        const response = await model.generateContent({
+            contents: [{
+                role: "user",
+                parts: [
+                    { text: params.prompt },
+                ]
+            }],
+        });
 
-  try {
-    const { prompt, model, width, height, steps } = req.body;
-    // Note: steps intentionally kept - image gen needs explicit control
-    // Unlike chat, there's no "auto-calculate" for image params
-
-    const response = await fetch("https://api.together.xyz/v1/images/generations", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: model || "black-forest-labs/FLUX.1-schnell",
-        prompt,
-        width: width || 1024,
-        height: height || 1024,
-        steps: steps || 4,
-        n: 1,
-        response_format: "b64_json",
-      }),
-    });
-
-    const data = await response.json();
-    res.json(data);
-  } catch (error) {
-    console.error("Image generation error:", error);
-    res.status(500).json({ error: "Failed to generate image" });
-  }
+        const imageResponse = response.response;
+        return imageResponse.candidates[0].content.parts[0].fileData;
+    } catch (error) {
+        console.error("Image generation error:", error);
+        throw new functions.https.HttpsError('internal', 'Failed to generate image.');
+    }
 });
 
-// ============================================================================
-// HEALTH CHECK (Admin only)
-// ============================================================================
+// ===========================================================================
+// RESEARCH AGENT ENDPOINT (Exa.ai)
+// ===========================================================================
+export const researchAgent = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    }
+
+    const { type, query, maxResults, url } = data;
+    const exaApiKey = await getSecret('EXA_API_KEY');
+
+    if (!exaApiKey) {
+        throw new functions.https.HttpsError('internal', 'EXA_API_KEY secret not found.');
+    }
+
+    const exa = new Exa(exaApiKey);
+
+    try {
+        switch (type) {
+            case 'search':
+                const searchResults = await exa.search(query, {
+                    numResults: maxResults || 10,
+                    useAutoprompt: true,
+                });
+                return { results: searchResults };
+
+            case 'answer':
+                const answerResult = await exa.search(query, {
+                    answer: true,
+                });
+                return { answer: answerResult };
+
+            case 'crawl':
+                if (!url) {
+                    throw new functions.https.HttpsError('invalid-argument', 'A URL is required for crawling.');
+                }
+                const contentsResult = await exa.getContents([url]);
+                return { contents: contentsResult };
+
+            default:
+                throw new functions.https.HttpsError('invalid-argument', 'Unsupported research agent type.');
+        }
+    } catch (error) {
+        console.error("Research agent error:", error);
+        throw new functions.https.HttpsError('internal', 'Research agent failed.');
+    }
+});
+
+
+// ===========================================================================
+// HEALTH CHECK
+// ===========================================================================
 
 export const health = functions.https.onRequest(async (req, res) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  
+
   if (req.method === "OPTIONS") {
     res.status(204).send("");
     return;
   }
-  
-  // Basic health check (public) - just confirms function is running
-  const user = await verifyAuth(req);
-  
-  // Detailed health check only for authenticated users
-  if (user) {
-    const togetherKey = await getSecret("TOGETHER_API_KEY");
-    res.json({
+
+  // Quick check for keys in environment or secret manager for a more detailed health check
+  const togetherApiKey = await getSecret('TOGETHER_API_KEY');
+  const openRouterApiKey = await getSecret('OPENROUTER_API_KEY');
+  const exaApiKey = await getSecret('EXA_API_KEY');
+
+
+  res.json({
       status: "ok",
       timestamp: new Date().toISOString(),
-      authenticated: true,
-      userId: user.uid,
-      secrets: {
-        TOGETHER_API_KEY: togetherKey ? "configured" : "missing",
-      },
+      services: {
+        vertexAI: "configured",
+        togetherAI: togetherApiKey ? "key_found" : "key_not_found",
+        openRouter: openRouterApiKey ? "key_found" : "key_not_found",
+        exa: exaApiKey ? "key_found" : "key_not_found",
+      }
     });
-  } else {
-    // Public: only confirm the function is alive
-    res.json({
-      status: "ok",
-      timestamp: new Date().toISOString(),
-    });
-  }
 });
+
+
+export * from "./getModels";

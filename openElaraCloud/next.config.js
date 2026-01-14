@@ -15,9 +15,6 @@ const nextConfig = {
     NEXT_PUBLIC_APP_NAME: 'OpenElara Cloud',
     NEXT_PUBLIC_APP_VERSION: '1.0.0',
   },
-  
-  // Turbopack config (Next.js 16+)
-  turbopack: {},
 };
 
 module.exports = nextConfig;

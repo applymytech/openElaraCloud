@@ -1,43 +1,89 @@
 /**
- * API Client for OpenElara Cloud
- * 
- * ARCHITECTURE (from desktop openElara):
- * - Together.ai is the PRIMARY provider (chat, images, video, TTS)
- * - Other providers use OpenAI-compatible REST API
- * - Models are routed by provider detection from model ID
- * - BYOK (Bring Your Own Key) - users store keys in localStorage
- * 
- * This file re-exports the main API functions from apiClient.ts
- * and provides backwards-compatible interfaces.
+ * Main API for OpenElara Cloud
+ *
+ * This file defines the core data structures and serves as the primary
+ * entry point for all frontend API interactions. It re-exports functions
+ * from the underlying modules (`apiClient`, `models`, `exa`).
  */
 
-// Re-export everything from the main API client
-export {
-  // Types
-  type ChatMessage,
-  type ChatPayload,
-  type ChatResponse,
-  type ImagePayload,
-  type ImageResponse,
-  type ModelConfig,
-  type ContentPart,
-  type ToolCall,
-  
-  // Functions
-  chat,
-  routeChat,
-  generateImage,
-  detectProvider,
-  hasOwnKeys,
-  getAPIKey,
-  getAllAPIKeys,
-} from './apiClient';
+// ===========================================================================
+// CORE TYPES
+// ===========================================================================
 
-import { hasOwnKeys } from './byok';
-
-/**
- * Check if BYOK mode is active (user has their own keys)
- */
-export function isBYOKMode(): boolean {
-  return hasOwnKeys();
+export interface ContentPart {
+    text?: string;
+    // In the future, this could be extended for multimodal input, 
+    // e.g., { inline_data: { mime_type: string, data: string } }
 }
+
+export interface ToolCall {
+    id: string;
+    type: 'function';
+    function: {
+        name: string;
+        arguments: string; // JSON string
+    };
+}
+
+export interface ChatMessage {
+    role: 'user' | 'assistant' | 'tool';
+    content: string; // Can be a simple string or stringified JSON for tool results
+    tool_calls?: ToolCall[];
+    tool_call_id?: string;
+}
+
+export interface Tool {
+    type: 'function';
+    function: {
+        name: string;
+        description: string;
+        parameters: any; // JSON Schema object
+    };
+}
+
+export interface ImageGenParams {
+    prompt: string;
+    negative_prompt?: string;
+    steps?: number;
+    width?: number;
+    height?: number;
+    guidance_scale?: number;
+}
+
+// ===========================================================================
+// RESEARCH / EXA TYPES
+// ===========================================================================
+
+export interface ResearchResult {
+    title: string;
+    url: string;
+    publishedDate?: string;
+    author?: string;
+    score: number;
+    id: string;
+}
+
+export interface AnswerResult {
+    answer: string;
+    results: ResearchResult[];
+}
+
+export interface ContentsResult {
+    results: {
+        url: string;
+        content: string;
+    }[];
+}
+
+// ===========================================================================
+// RE-EXPORTS
+// ===========================================================================
+
+// Main client functions for calling backend
+export { callChatApi, callImageApi, callResearchApi } from './apiClient';
+
+// High-level interface for the Exa research agent
+export { search, getAnswer, crawl } from './exa';
+
+// Model management (fetching lists, getting metadata)
+export * from './models';

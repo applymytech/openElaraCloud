@@ -1,40 +1,9 @@
-/**
- * Storage Management for OpenElara Cloud
- * 
- * Philosophy: Cloud storage is TEMPORARY
- * - Users get generous quota (5GB default, up to 10GB)
- * - Generated media should be DOWNLOADED (cut, not copy)
- * - Downloaded files include provenance metadata sidecars
- * - The VALUE is in the signed files - keep them locally!
- * 
- * Storage Categories:
- * - RAG data (conversation history, knowledge files) - stays in Firestore
- * - Generated media (images, videos, audio) - should be downloaded & removed
- */
-
-import { db, storage, auth } from './firebase';
-import { 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  collection, 
-  query, 
-  where, 
-  getDocs,
-  deleteDoc,
-  Timestamp,
-  increment
-} from 'firebase/firestore';
-import { 
-  ref, 
-  uploadBytes, 
-  getDownloadURL, 
-  deleteObject,
-  listAll,
-  getMetadata 
-} from 'firebase/storage';
-import { SignedContent, generateMetadata, ContentMetadata } from './signing';
+import {
+  db, storage, auth, doc, getDoc, setDoc, updateDoc, collection, query, where, 
+  getDocs, deleteDoc, Timestamp, increment, ref, uploadBytes, getDownloadURL, 
+  deleteObject, listAll, getMetadata
+} from './firebase';
+import { SignedContent, ContentMetadata } from './signing';
 
 // ============================================================================
 // STORAGE QUOTAS

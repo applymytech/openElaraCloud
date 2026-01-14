@@ -1,34 +1,6 @@
-/**
- * RAG Service for OpenElara Cloud
- * 
- * PORTED FROM DESKTOP: src/main/rag/embeddingService.js
- * 
- * Provides retrieval-augmented generation through:
- * - Together.ai embeddings API (cloud-first, no native modules)
- * - Conversation history (auto-ingested)
- * - Custom knowledge files (markdown converted)
- * - User manual (always available)
- * 
- * Data stored in Firestore with embeddings for semantic search.
- * Uses M2-BERT-32k model which is available on Together.ai.
- */
-
-import { db, auth } from './firebase';
-import { 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  collection, 
-  query, 
-  where, 
-  getDocs,
-  deleteDoc,
-  Timestamp,
-  orderBy,
-  limit,
-  addDoc
-} from 'firebase/firestore';
+import {
+  db, auth, doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, deleteDoc, Timestamp, orderBy, limit, addDoc
+} from './firebase';
 import { updateStorageUsage } from './storage';
 import { getAPIKey } from './byok';
 
@@ -391,7 +363,7 @@ export async function ingestKnowledgeFile(
 
 /**
  * Search RAG documents using semantic similarity (embeddings)
- * Falls back to keyword search if embeddings unavailable
+ * Falls back to keyword. If embeddings are not available
  */
 export async function searchRAG(
   queryText: string,

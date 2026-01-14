@@ -1,7 +1,19 @@
-import { getApps, initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import {
+  getApps, initializeApp, FirebaseApp 
+} from "firebase/app";
+import {
+  getAuth, Auth, Unsubscribe, User, onAuthStateChanged, signOut,
+  createUserWithEmailAndPassword, signInWithEmailAndPassword
+} from "firebase/auth";
+import {
+  getFirestore, Firestore, doc, getDoc, setDoc, updateDoc, collection, 
+  query, where, getDocs, deleteDoc, Timestamp, orderBy, limit, addDoc, 
+  runTransaction, writeBatch, collectionGroup, increment
+} from "firebase/firestore";
+import { 
+  getStorage, FirebaseStorage, ref, uploadBytes, getDownloadURL, deleteObject,
+  listAll, getMetadata
+} from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -13,17 +25,32 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase (only once)
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+let app: FirebaseApp;
+let auth: Auth;
+let db: Firestore;
+let storage: FirebaseStorage;
 
-// Auth
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
+// Check if running in the browser and if Firebase is not already initialized.
+if (typeof window !== 'undefined' && getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+  storage = getStorage(app);
+} else if (getApps().length > 0) {
+  app = getApps()[0];
+  auth = getAuth(app);
+  db = getFirestore(app);
+  storage = getStorage(app);
+}
 
-// Firestore
-export const db = getFirestore(app);
-
-// Storage
-export const storage = getStorage(app);
-
-export default app;
+export type { Unsubscribe, User };
+export { 
+  app, auth, db, storage,
+  // Auth
+  onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  // Firestore
+  doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, deleteDoc, 
+  Timestamp, orderBy, limit, addDoc, runTransaction, writeBatch, collectionGroup, increment,
+  // Storage
+  ref, uploadBytes, getDownloadURL, deleteObject, listAll, getMetadata
+};

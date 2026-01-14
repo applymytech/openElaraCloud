@@ -15,7 +15,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "react-jsx",
+    "jsx": "preserve",
     "incremental": true,
     "paths": {
       "@/*": [
@@ -30,12 +30,17 @@
       "@/styles/*": [
         "./src/styles/*"
       ]
-    }
+    },
+    "types": [
+      "bun-types",
+      "@testing-library/jest-dom"
+    ]
   },
   "include": [
     "next-env.d.ts",
     "**/*.ts",
-    "**/*.tsx"
+    "**/*.tsx",
+    "tests/setup.ts"
   ],
   "exclude": [
     "node_modules",

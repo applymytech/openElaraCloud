@@ -1,13 +1,3 @@
-/**
- * Context Canvas Service
- * 
- * Manages pinned files that persist across conversations.
- * Unlike file attachments (single-turn), the context canvas stays
- * in context until the user unpins files.
- * 
- * Format matches desktop app for system prompt injection.
- */
-
 import { db, auth } from './firebase';
 import {
   collection,
