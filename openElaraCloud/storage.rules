@@ -6,7 +6,7 @@ service firebase.storage {
     // This configuration locks Cloud Storage to a single user account,
     // identified by the email address below.
 
-    // IMPORTANT: Replace 'YOUR_EMAIL@example.com' with the email you use for Firebase login.
+    // IMPORTANT: Replace 'andrewquartly@applymytech.ai' with the email you use for Firebase login.
     function isAllowedUser() {
       return request.auth != null && request.auth.token.email == "andrewquartly@applymytech.ai";
     }

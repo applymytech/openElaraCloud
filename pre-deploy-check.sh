@@ -19,7 +19,7 @@ fi
 
 # 2. Rule Synchronization
 echo "⚙️ Step 2: Synchronizing Security Rules & Signing Logic..."
-cd openElaraCloud && node deploy.js && cd ..
+cd openElaraCloud && node deploy.cjs && cd ..
 
 # 3. Cryptographic Code Audit
 echo "🔍 Step 3: Auditing Cryptographic Code for Leakage..."

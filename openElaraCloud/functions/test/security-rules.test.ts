@@ -50,7 +50,7 @@ describe("Firestore Security Rules", () => {
     });
 
     const setup = doc(db, "users", aliceId);
-    await expect(getDoc(setup)).to.be.fulfilled;
+    await getDoc(setup);
   });
 
   it("should deny a user from reading another user's profile", async () => {

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "bun --bun run dev",
-    "build": "node deploy.js && bun --bun run build",
+    "build": "node deploy.cjs && npx next build",
     "preview": "bun --bun run preview",
     "test": "bun test",
     "test:smoke": "playwright test",
