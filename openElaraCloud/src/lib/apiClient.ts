@@ -6,7 +6,7 @@
  * easier to invoke them from the frontend application.
  */
 
-import { firebaseApp } from './firebase';
+import { app } from './firebase';
 import { getFunctions, httpsCallable, HttpsCallableResult } from 'firebase/functions';
 import { ImageGenParams, ChatMessage, Tool, ResearchResult } from './api'; // Assuming these types are defined in api.ts
 import { getModelById, Model } from './models';
@@ -15,12 +15,6 @@ import { getModelById, Model } from './models';
 // INITIALIZATION
 // ===========================================================================
 
-const functions = getFunctions(firebaseApp);
-
-// Define callable functions
-const aiChat = httpsCallable(functions, 'aiChat');
-const generateImage = httpsCallable(functions, 'generateImage');
-const researchAgent = httpsCallable(functions, 'researchAgent');
 
 // ===========================================================================
 // TYPE DEFINITIONS
@@ -72,7 +66,7 @@ export async function callChatApi(modelId: string, messages: ChatMessage[], tool
             tools,
         };
 
-        const result: HttpsCallableResult = await aiChat(request);
+        const result: HttpsCallableResult = await getChatCallable()(request);
         return (result.data as any).response as ChatMessage;
     } catch (error) {
         console.error("Error calling chat API:", error);
@@ -104,7 +98,7 @@ export async function callImageApi(modelId: string, params: ImageGenParams): Pro
             params,
         };
 
-        const result: HttpsCallableResult = await generateImage(request);
+        const result: HttpsCallableResult = await getImageCallable()(request);
         return result.data;
     } catch (error) {
         console.error("Error calling image API:", error);
@@ -120,10 +114,22 @@ export async function callImageApi(modelId: string, params: ImageGenParams): Pro
  */
 export async function callResearchApi(request: ResearchRequest): Promise<any> {
     try {
-        const result: HttpsCallableResult = await researchAgent(request);
+        const result: HttpsCallableResult = await getResearchCallable()(request);
         return result.data;
     } catch (error) {
         console.error("Error calling research API:", error);
         throw new Error(`Research failed: ${error}`);
     }
+}
+
+function getChatCallable() {
+  return httpsCallable(getFunctions(app), 'aiChat');
+}
+
+function getImageCallable() {
+  return httpsCallable(getFunctions(app), 'generateImage');
+}
+
+function getResearchCallable() {
+  return httpsCallable(getFunctions(app), 'researchAgent');
 }

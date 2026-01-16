@@ -66,11 +66,11 @@ export async function scanAndVerify(dataUrl: string): Promise<any> {
  * Check if the currently logged in user is the App Owner
  */
 async function checkIfAdmin(): Promise<boolean> {
-  if (!auth.currentUser) return false;
+  if (!auth?.currentUser) return false;
   
   // We check the 'users' collection for the isInviteOnly or admin flag
   // In our schema, the admin is usually the first user or one with specific claims
-  const userRef = doc(db, "users", auth.currentUser.uid);
+  const userRef = doc(db, "users", auth?.currentUser.uid);
   const userSnap = await getDoc(userRef);
   
   if (userSnap.exists()) {
@@ -101,4 +101,39 @@ export function downloadContent(dataUrl: string, metadata: any, filename: string
   metaLink.href = metaUrl;
   metaLink.download = filename.replace(/\.[^.]+$/, '_sidecar.json');
   metaLink.click();
+}
+
+export interface SignedContent {
+  dataUrl: string;
+  metadataJson: string;
+  metadata: ContentMetadata;
+  signature: string;
+}
+
+export async function generateMetadata(data: any): Promise<any> {
+  return {
+    ...data,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+export async function signImage(dataUrl: string, metadata: any): Promise<SignedContent> {
+  return {
+    dataUrl,
+    metadataJson: JSON.stringify(metadata),
+    signature: 'local-mock-signature',
+    metadata: metadata,
+  };
+}
+
+export interface ContentMetadata {
+  contentType: string;
+  prompt?: string;
+  model?: string;
+  generatedAt: string;
+  [key: string]: any;
+}
+
+export async function downloadWithMetadata(signedContent: SignedContent, filename: string): Promise<void> {
+    downloadContent(signedContent.dataUrl, JSON.parse(signedContent.metadataJson), filename);
 }

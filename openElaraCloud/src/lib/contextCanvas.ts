@@ -80,7 +80,7 @@ let canvasState: ContextCanvasState = {
  * Load context canvas from Firestore
  */
 export async function loadContextCanvas(): Promise<ContextCanvasState> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   const canvasQuery = await getDocs(
@@ -126,7 +126,7 @@ export async function loadContextCanvas(): Promise<ContextCanvasState> {
 export async function pinFile(
   file: File | { name: string; content: string; type?: string }
 ): Promise<ContextCanvasFile> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   // Validate file extension
@@ -218,7 +218,7 @@ export async function pinFile(
  * Unpin a file from the context canvas
  */
 export async function unpinFile(filename: string): Promise<void> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   const file = canvasState.files.get(filename);
@@ -238,7 +238,7 @@ export async function unpinFile(filename: string): Promise<void> {
  * Clear all files from the context canvas
  */
 export async function clearCanvas(): Promise<void> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   const canvasQuery = await getDocs(

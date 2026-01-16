@@ -177,12 +177,12 @@ interface ConversationMessage {
  * Ingest a conversation into RAG with embeddings
  * Converts to markdown format for efficient retrieval
  */
-export async function ingestConversation(
+export async function ingestConversation_old(
   conversationId: string,
   messages: ConversationMessage[],
   title?: string
 ): Promise<RAGDocument> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   // Convert to markdown
@@ -300,7 +300,7 @@ export async function ingestKnowledgeFile(
   file: File,
   tags?: string[]
 ): Promise<RAGDocument> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   // Convert file to markdown
@@ -374,7 +374,7 @@ export async function searchRAG(
     useKeywordFallback?: boolean;
   } = {}
 ): Promise<RAGSearchResult[]> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   const { 
@@ -527,7 +527,7 @@ export async function hybridSearchRAG(
   queryText: string,
   maxResults: number = 5
 ): Promise<RAGSearchResult[]> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   const ragQuery = await getDocs(
@@ -588,7 +588,7 @@ export async function hybridSearchRAG(
 /**
  * Build a context string from RAG results for injection into chat
  */
-export async function buildRAGContext(userMessage: string): Promise<string | null> {
+export async function buildRAGContext_old(userMessage: string): Promise<string | null> {
   try {
     const results = await searchRAG(userMessage, 3);
     
@@ -619,7 +619,7 @@ export async function buildRAGContext(userMessage: string): Promise<string | nul
  * List all RAG documents
  */
 export async function listRAGDocuments(): Promise<RAGDocument[]> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   const ragQuery = await getDocs(
@@ -641,7 +641,7 @@ export async function listRAGDocuments(): Promise<RAGDocument[]> {
  * Delete a RAG document
  */
 export async function deleteRAGDocument(docId: string): Promise<void> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   const docRef = doc(db, 'users', user.uid, 'rag', docId);
@@ -684,4 +684,14 @@ export async function getRAGStats(): Promise<{
 function estimateTokens(text: string): number {
   // Rough estimate: ~4 characters per token for English
   return Math.ceil(text.length / 4);
+}
+
+export async function ingestConversation(conversationId: string, messages: ConversationMessage[], title?: string): Promise<RAGDocument | undefined> {
+  if (typeof window === 'undefined') return undefined;
+  return ingestConversation_old(conversationId, messages, title);
+}
+
+export async function buildRAGContext(userMessage: string): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  return buildRAGContext_old(userMessage);
 }

@@ -1,5 +1,5 @@
 
-import { https } from 'firebase-functions';
+import { onCall } from 'firebase-functions/v2/https';
 import fetch from 'node-fetch';
 
 // Define a common model structure for the frontend
@@ -111,7 +111,7 @@ async function getOpenRouterModels(apiKey: string): Promise<Model[]> {
 }
 
 
-export const getModels = https.onCall(async (data, context) => {
+export const getModels = onCall(async (request) => {
     // In a real app, you'd use Google Secret Manager here
     const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY;
     const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;

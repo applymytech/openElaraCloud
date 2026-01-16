@@ -19,7 +19,7 @@ import {
   generateAgenticSelfie,
 } from '../lib/mediaGeneration';
 import { getActiveCharacter } from '../lib/characters';
-import { downloadWithMetadata } from '../lib/signing';
+import { downloadContent } from '../lib/signing';
 import { MoodTracker, getMoodState } from '../lib/mood';
 import { storeMedia, cutMedia, formatBytes } from '../lib/storage';
 
@@ -105,7 +105,7 @@ export default function ImageGenPanel({ onClose, onImageGenerated, conversationC
     if (!result) return;
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `${character.name}_${mode}_${timestamp}.png`;
-    downloadWithMetadata(result.signedContent, filename);
+    downloadContent(result.signedContent.dataUrl, JSON.parse(result.signedContent.metadataJson), filename);
   };
   
   // Download and delete from cloud (CUT operation)

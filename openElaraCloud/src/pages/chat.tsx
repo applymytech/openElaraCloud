@@ -149,7 +149,7 @@ export default function Chat() {
       exportedAt: new Date().toISOString(),
       messages: messages.map(m => ({
         role: m.role,
-        content: typeof m.content === 'string' ? m.content : m.content.find(p => p.type === 'text')?.text || '',
+        content: typeof m.content === 'string' ? m.content : (m.content as any[]).find(p => p.type === 'text')?.text || '',
       })),
     };
     
@@ -204,7 +204,7 @@ export default function Chat() {
       // Content is always string for user messages in this context
       const messageText = typeof userMessage.content === 'string' 
         ? userMessage.content 
-        : userMessage.content.find(p => p.type === 'text')?.text || '';
+        : (userMessage.content as any[]).find(p => p.type === 'text')?.text || '';
       moodTracker.updateFromUserMessage(messageText);
       
       // Build structured system prompt (from desktop promptConstants.js)
@@ -662,7 +662,7 @@ export default function Chat() {
               <div style={{ whiteSpace: "pre-wrap" }}>
                 {typeof msg.content === 'string' 
                   ? msg.content 
-                  : msg.content.find(p => p.type === 'text')?.text || ''}
+                  : (msg.content as any[]).find(p => p.type === 'text')?.text || ''}
               </div>
               
               {/* Render generated image if present */}

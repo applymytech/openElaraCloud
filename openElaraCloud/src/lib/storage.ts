@@ -21,7 +21,7 @@ export const DEFAULT_STORAGE_LIMIT = 5 * 1024 * 1024 * 1024;  // 5 GB
 export const MAX_STORAGE_LIMIT = 10 * 1024 * 1024 * 1024;     // 10 GB
 
 export async function getStorageQuota(): Promise<StorageQuota> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -36,7 +36,7 @@ export async function getStorageQuota(): Promise<StorageQuota> {
 }
 
 export async function updateStorageUsage(deltaBytes: number, category: 'rag' | 'media'): Promise<void> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   const userRef = doc(db, 'users', user.uid);
@@ -95,7 +95,7 @@ export async function storeMedia(
   filename: string, 
   contentType: string
 ): Promise<StoredMedia> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   // Check quota
@@ -167,7 +167,7 @@ export async function storeMedia(
  * List all stored media for current user
  */
 export async function listStoredMedia(): Promise<StoredMedia[]> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   const mediaQuery = query(
@@ -196,7 +196,7 @@ export async function downloadMediaWithSidecar(mediaId: string): Promise<{
   sidecarBlob: Blob;
   filename: string;
 }> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   // Get media record
@@ -238,7 +238,7 @@ export async function downloadMediaWithSidecar(mediaId: string): Promise<{
  * Delete media after download (completing the CUT operation)
  */
 export async function deleteMedia(mediaId: string): Promise<void> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   // Get media record
@@ -302,7 +302,7 @@ export async function storeMediaFromUrl(
   contentType: string,
   metadata?: Record<string, any>
 ): Promise<StoredMedia> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error('Not authenticated');
   
   // Fetch the content from URL

@@ -31,7 +31,7 @@ let db: Firestore;
 let storage: FirebaseStorage;
 
 // Check if running in the browser and if Firebase is not already initialized.
-if (typeof window !== 'undefined' && getApps().length === 0) {
+if (typeof window !== 'undefined' && getApps().length === 0 && firebaseConfig.apiKey) {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);

@@ -1,6 +1,12 @@
 {
-  "adminEmail": "REPLACE_WITH_YOUR_EMAIL@example.com",
+  "appOwnerGoogleEmail": "REPLACE_WITH_GOOGLE_ACCOUNT_EMAIL@gmail.com",
+  "appAdminUserEmail": "REPLACE_WITH_APP_LOGIN_EMAIL@example.com",
   "defaultStorageQuotaGB": 2,
   "firestoreRulesFile": "firestore.rules",
-  "storageRulesFile": "storage.rules"
+  "storageRulesFile": "storage.rules",
+  "__instructions__": [
+    "1. 'appOwnerGoogleEmail': The Google account used to manage Firebase/Google Cloud Console.",
+    "2. 'appAdminUserEmail': The email you will use to LOGIN to the app (must be created in Firebase Auth).",
+    "3. Run 'cd openElaraCloud && node deploy.cjs' after filling this out to update security rules."
+  ]
 }

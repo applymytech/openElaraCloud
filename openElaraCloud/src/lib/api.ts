@@ -80,10 +80,20 @@ export interface ContentsResult {
 // ===========================================================================
 
 // Main client functions for calling backend
-export { callChatApi, callImageApi, callResearchApi } from './apiClient';
+import { callChatApi, callImageApi, callResearchApi } from './apiClient';
+export { callChatApi, callImageApi, callResearchApi };
 
 // High-level interface for the Exa research agent
 export { search, getAnswer, crawl } from './exa';
 
 // Model management (fetching lists, getting metadata)
 export * from './models';
+
+export async function chat(messages: any[], options: any = {}): Promise<any> {
+    if (typeof window === 'undefined') return { choices: [] };
+    return callChatApi(options.model || 'fallback', messages);
+}
+
+export function isBYOKMode(): boolean {
+    return true;
+}

@@ -18,9 +18,9 @@ import dynamic from 'next/dynamic';
 import ELARA from "@/lib/elara";
 import { APP_VERSION, MANUAL_VERSION, LAST_UPDATED } from "@/lib/userManual";
 import {
-  getAllAPIKeys,
-  saveAPIKey,
-  removeAPIKey,
+  isServiceConfigured,
+  saveAPIKeySecurely,
+  markServiceConfigured,
   hasOwnKeys,
   type APIKeys,
 } from "../lib/byok";
@@ -131,7 +131,7 @@ export default function Settings() {
   const [downloading, setDownloading] = useState<string | null>(null);
   
   // BYOK state
-  const [keys, setKeys] = useState<APIKeys>({});
+  const [keys, setKeys] = useState<any>({});
   const [editingKey, setEditingKey] = useState<keyof APIKeys | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [saved, setSaved] = useState(false);
@@ -162,12 +162,12 @@ export default function Settings() {
       }
       
       setUser(user);
-      setKeys(getAllAPIKeys());
+      
       setCharacter(getActiveCharacter());
       
       // Load selected models
-      setSelectedChatModel(getSelectedModel('chat') || getDefaultChatModel());
-      setSelectedImageModel(getSelectedModel('image') || getDefaultImageModel());
+      const defaultChat = await getDefaultChatModel(); setSelectedChatModel(getSelectedModel('chat') || defaultChat);
+      const defaultImage = await getDefaultImageModel(); setSelectedImageModel(getSelectedModel('image') || defaultImage);
       
       // Load storage status
       try {
@@ -185,10 +185,10 @@ export default function Settings() {
   
   // Load models when API Keys tab is active and Together key exists
   useEffect(() => {
-    if (activeTab === 'keys' && keys.together) {
+    if (activeTab === 'keys' && isServiceConfigured('together')) {
       loadModels();
     }
-  }, [activeTab, keys.together]);
+  }, [activeTab, isServiceConfigured('together')]);
   
   const loadModels = async () => {
     setLoadingModels(true);
@@ -205,14 +205,14 @@ export default function Settings() {
       setChatModels(Object.entries(CHAT_MODEL_METADATA).map(([id, meta]: [string, ChatModelMetadata]) => ({
         id,
         type: 'chat' as const,
-        displayName: meta.displayName,
+        displayName: meta.displayName, provider: 'fallback',
         metadata: meta,
         fallback: true,
       })));
       setImageModels(Object.entries(IMAGE_MODEL_METADATA).map(([id, meta]: [string, ImageModelMetadata]) => ({
         id,
         type: 'image' as const,
-        displayName: meta.displayName,
+        displayName: meta.displayName, provider: 'fallback',
         metadata: meta,
         fallback: true,
       })));
@@ -235,10 +235,10 @@ export default function Settings() {
     }
   };
 
-  const handleSaveKey = (provider: keyof APIKeys) => {
+  const handleSaveKey = async (provider: string) => {
     if (inputValue.trim()) {
-      saveAPIKey(provider, inputValue.trim());
-      setKeys(getAllAPIKeys());
+      await saveAPIKeySecurely(provider, inputValue.trim()); markServiceConfigured(provider);
+      
       setMessage({ type: 'success', text: `${String(provider)} key saved!` });
       // Refresh models if Together key was added
       if (provider === 'together') {
@@ -253,8 +253,8 @@ export default function Settings() {
 
   const handleRemoveKey = (provider: keyof APIKeys) => {
     if (confirm(`Remove ${String(provider)} API key?`)) {
-      removeAPIKey(provider);
-      setKeys(getAllAPIKeys());
+      markServiceConfigured(provider, false);
+      
     }
   };
   
@@ -608,7 +608,7 @@ export default function Settings() {
             </div>
             
             {/* Model Selection */}
-            {keys.together && (
+            {isServiceConfigured('together') && (
               <div className="card">
                 <div className="card-header">
                   <h3>🤖 Model Selection</h3>

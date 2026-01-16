@@ -88,8 +88,8 @@ export async function generateImage(
   }
   
   const character = getActiveCharacter();
-  const model = options.model || getDefaultImageModel();
-  const modelConfig = getImageModelMetadata(model);
+  const model = options.model || await getDefaultImageModel();
+  const modelConfig = await getImageModelMetadata(model);
   
   // Build prompt
   let prompt = options.prompt;
@@ -356,8 +356,8 @@ export async function generateVideo(
     throw new Error('Together.ai API key required. Add it in Settings.');
   }
   
-  const model = options.model || getDefaultVideoModel();
-  const modelConfig = getVideoModelMetadata(model);
+  const model = options.model || await getDefaultVideoModel();
+  const modelConfig = await getVideoModelMetadata(model);
   
   if (!modelConfig) {
     throw new Error(`Unknown video model: ${model}. Please select a valid model.`);

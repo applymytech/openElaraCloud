@@ -1,3 +1,4 @@
+import path from 'path';
 import {
   initializeTestEnvironment,
   RulesTestEnvironment,
@@ -20,7 +21,7 @@ describe("Firestore Security Rules", () => {
     testEnv = await initializeTestEnvironment({
       projectId: PROJECT_ID,
       firestore: {
-        rules: fs.readFileSync("firestore.rules", "utf8"),
+        rules: fs.readFileSync(path.resolve(__dirname, '../../firestore.rules'), "utf8"),
         host: "127.0.0.1",
         port: 8080,
       },
@@ -37,7 +38,7 @@ describe("Firestore Security Rules", () => {
 
   it("should allow a user to read their own profile", async () => {
     const aliceId = "alice_123";
-    const aliceContext = testEnv.authenticatedContext(aliceId);
+    const aliceContext = testEnv.authenticatedContext(aliceId, { email: "andrewquartly@applymytech.ai" });
     const db = aliceContext.firestore();
     
     // Setup: Admin creates user
@@ -56,7 +57,7 @@ describe("Firestore Security Rules", () => {
   it("should deny a user from reading another user's profile", async () => {
     const aliceId = "alice_123";
     const bobId = "bob_456";
-    const aliceContext = testEnv.authenticatedContext(aliceId);
+    const aliceContext = testEnv.authenticatedContext(aliceId, { email: "andrewquartly@applymytech.ai" });
     const db = aliceContext.firestore();
 
     await testEnv.withSecurityRulesDisabled(async (adminContext) => {
@@ -77,7 +78,7 @@ describe("Firestore Security Rules", () => {
 
   it("should enforce storage quota logic (simulated)", async () => {
     const aliceId = "alice_123";
-    const aliceContext = testEnv.authenticatedContext(aliceId);
+    const aliceContext = testEnv.authenticatedContext(aliceId, { email: "andrewquartly@applymytech.ai" });
     const db = aliceContext.firestore();
 
     const usageDoc = doc(db, "usage", aliceId);

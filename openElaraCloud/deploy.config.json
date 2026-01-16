@@ -1,5 +1,6 @@
 {
-  "adminEmail": "andrewquartly@applymytech.ai",
+  "appOwnerGoogleEmail": "gservices@applymytech.ai",
+  "appAdminUserEmail": "andrewquartly@applymytech.ai",
   "defaultStorageQuotaGB": 2,
   "firestoreRulesFile": "firestore.rules",
   "storageRulesFile": "storage.rules"

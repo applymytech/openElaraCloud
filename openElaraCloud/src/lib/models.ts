@@ -5,7 +5,7 @@
  * from various providers. It consolidates them into a single, unified list for the
  * frontend to use.
  */
-import { firebaseApp } from './firebase';
+import { app } from './firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // ===========================================================================
@@ -16,6 +16,15 @@ export interface ResolutionPreset {
   width: number;
   height: number;
   label: string;
+}
+
+export interface VideoModelMetadata {
+  displayName: string;
+  description: string;
+  maxDuration: number;
+  defaultResolution: string;
+  parameterSupport: { negative_prompt: boolean; guidance_scale: boolean };
+  features: { firstFrame: boolean; lastFrame: boolean };
 }
 
 export interface ImageModelMetadata {
@@ -30,6 +39,7 @@ export interface ImageModelMetadata {
   defaultGuidanceScale: number;
   guidanceScaleRange: { min: number; max: number };
   recommended?: boolean;
+  supportsSeed?: boolean;
 }
 
 export interface ChatModelMetadata {
@@ -38,6 +48,7 @@ export interface ChatModelMetadata {
   supportsTools: boolean;
   contextLength?: number | null;
   recommended?: boolean;
+  supportsSeed?: boolean;
 }
 
 export interface Model {
@@ -75,7 +86,8 @@ async function fetchModels(): Promise<Model[]> {
 
   console.log("Fetching models from backend...");
   try {
-    const functions = getFunctions(firebaseApp);
+    if (typeof window === 'undefined') return [];
+    const functions = getFunctions(app);
     const getModels = httpsCallable(functions, 'getModels');
     const response = await getModels();
     const models = (response.data as any).models as Model[];
@@ -134,12 +146,14 @@ export async function getRecommendedImageModels(): Promise<string[]> {
 }
 
 export async function getDefaultChatModel(): Promise<string> {
+    if (typeof window === 'undefined') return 'fallback';
     const recommended = await getRecommendedChatModels();
     const allChatModels = await getChatModels();
     return recommended[0] || (allChatModels.length > 0 ? allChatModels[0].id : 'gemini-1.5-pro-preview-0409');
 }
   
 export async function getDefaultImageModel(): Promise<string> {
+    if (typeof window === 'undefined') return 'fallback';
     const recommended = await getRecommendedImageModels();
     const allImageModels = await getImageModels();
     return recommended[0] || (allImageModels.length > 0 ? allImageModels[0].id : 'imagegeneration@005');
@@ -151,6 +165,7 @@ export async function getModelById(modelId: string): Promise<Model | null> {
 }
 
 export async function getImageModelMetadata(modelId: string): Promise<ImageModelMetadata | null> {
+  if (typeof window === 'undefined') return null;
   const model = await getModelById(modelId);
   return model && model.type === 'image' ? model.metadata as ImageModelMetadata : null;
 }
@@ -159,3 +174,32 @@ export async function getChatModelMetadata(modelId: string): Promise<ChatModelMe
     const model = await getModelById(modelId);
     return model && model.type === 'chat' ? model.metadata as ChatModelMetadata : null;
 }
+
+export const IMAGE_MODEL_METADATA: Record<string, any> = {};
+export const VIDEO_MODEL_METADATA: Record<string, any> = {};
+export const VOICE_MODEL_METADATA: Record<string, any> = {};
+
+export async function getDefaultVideoModel(): Promise<string> {
+    if (typeof window === 'undefined') return 'fallback';
+    return 'local-fallback-video';
+}
+
+export async function getVideoModelMetadata(modelId: string): Promise<any> {
+    if (typeof window === 'undefined') return null;
+    return null;
+}
+
+export function getSelectedModel(type: 'chat' | 'image'): string {
+    if (typeof window !== 'undefined') {
+        return localStorage.getItem(`openelara_selected_${type}_model`) || '';
+    }
+    return '';
+}
+
+export function setSelectedModel(type: 'chat' | 'image', modelId: string): void {
+    if (typeof window !== 'undefined') {
+        localStorage.setItem(`openelara_selected_${type}_model`, modelId);
+    }
+}
+
+export const CHAT_MODEL_METADATA: Record<string, any> = {};

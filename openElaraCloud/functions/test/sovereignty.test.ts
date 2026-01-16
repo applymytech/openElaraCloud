@@ -1,3 +1,4 @@
+import path from 'path';
 import {
   initializeTestEnvironment,
   RulesTestEnvironment,
@@ -19,7 +20,7 @@ describe("Sovereignty & Integrity Rules", () => {
     testEnv = await initializeTestEnvironment({
       projectId: PROJECT_ID,
       firestore: {
-        rules: fs.readFileSync("firestore.rules", "utf8"),
+        rules: fs.readFileSync(path.resolve(__dirname, '../../firestore.rules'), "utf8"),
         host: "127.0.0.1",
         port: 8080,
       },
